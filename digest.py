@@ -104,7 +104,17 @@ For Tier 1 and top Tier 2 stories, provide substantive analysis:
 - CRITICAL: When referencing an article, ALWAYS include a hyperlink: [Article Title](https://full-url-here)
 - Every story you discuss MUST have at least one clickable link
 - CRITICAL: Always attribute the source outlet by name ("according to TechCrunch", "as reported by TechDirt", etc.)
-- Include at least one direct quote per Tier 1 story using > blockquote format
+- Include at least one direct quote per Tier 1 story
+- CRITICAL: Every direct quote MUST use this exact format — a blockquote followed by an attribution line linking the source name to the article URL:
+
+> "The quoted text from the article goes here."
+— [Source Name](https://article-url-here)
+
+  For example:
+> "Trump's going to win the election he lost, no matter what he has to do."
+— [Tech Dirt](https://www.techdirt.com/2026/01/29/example-article/)
+
+  NEVER put a quote without this attribution format. The source name in the attribution MUST be a hyperlink to the specific article the quote is from.
 - Write in first person, be specific and analytical"""
 
 
@@ -299,10 +309,102 @@ def format_articles_tiered(articles: list[dict]) -> dict:
     }
 
 
+def _match_quote_to_article(quote_text: str, articles: list[dict]) -> dict | None:
+    """Find the article a quote most likely came from.
+
+    Searches article content and summaries for the quote text.
+    Uses progressively shorter substrings to handle minor LLM paraphrasing.
+    """
+    # Strip quotation marks and clean up
+    clean = quote_text.strip().strip('""\u201c\u201d\'').strip()
+    if len(clean) < 15:
+        return None
+
+    # Try exact substring match first (case-insensitive)
+    clean_lower = clean.lower()
+    for article in articles:
+        content = (article.get("content") or "").lower()
+        summary = (article.get("summary") or "").lower()
+        if clean_lower in content or clean_lower in summary:
+            return article
+
+    # Try a shorter core phrase (first 60 chars) to handle minor paraphrasing
+    core = clean_lower[:60]
+    if len(core) >= 20:
+        for article in articles:
+            content = (article.get("content") or "").lower()
+            summary = (article.get("summary") or "").lower()
+            if core in content or core in summary:
+                return article
+
+    return None
+
+
+def _has_attribution_line(next_line: str) -> bool:
+    """Check if a line is already a quote attribution (— [Source](url))."""
+    stripped = next_line.strip()
+    # Match patterns like: — [Source](url), -- [Source](url), - [Source](url)
+    return bool(re.match(r'^[\u2014\u2013\-]{1,2}\s*\[', stripped))
+
+
+def inject_quote_attributions(content: str, articles: list[dict]) -> str:
+    """Post-process digest to ensure every blockquote has an attribution line.
+
+    Finds blockquotes (> ...) that are NOT followed by an attribution line
+    (— [Source Name](article-url)), matches the quote text to an article,
+    and adds the attribution.
+    """
+    lines = content.split('\n')
+    result = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Check if this is a blockquote line
+        if line.strip().startswith('>'):
+            # Collect all consecutive blockquote lines
+            quote_lines = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                quote_lines.append(lines[i])
+                i += 1
+
+            # Add the blockquote lines to result
+            result.extend(quote_lines)
+
+            # Check if the next non-empty line is already an attribution
+            next_idx = i
+            while next_idx < len(lines) and lines[next_idx].strip() == '':
+                next_idx += 1
+
+            has_attr = (
+                next_idx < len(lines) and _has_attribution_line(lines[next_idx])
+            )
+
+            if not has_attr:
+                # Extract the quote text from blockquote lines
+                quote_text = ' '.join(
+                    line.strip().lstrip('>').strip() for line in quote_lines
+                )
+                # Try to find which article this quote is from
+                article = _match_quote_to_article(quote_text, articles)
+                if article:
+                    source = article.get("source", "Unknown")
+                    url = article.get("url", "")
+                    result.append(f'— [{source}]({url})')
+                    result.append('')
+        else:
+            result.append(line)
+            i += 1
+
+    return '\n'.join(result)
+
+
 def inject_article_links(content: str, articles: list[dict]) -> str:
-    """Post-process digest content to add hyperlinks for article titles.
+    """Post-process digest content to add hyperlinks and quote attributions.
 
     Handles several patterns the model produces:
+    - Blockquotes without attribution lines (adds — [Source](url))
     - Raw URLs in brackets: [https://example.com/article]
     - Raw URLs in parentheses after text: some claim (https://example.com)
     - Raw URLs on their own line or inline
@@ -318,6 +420,9 @@ def inject_article_links(content: str, articles: list[dict]) -> str:
         if title and url:
             url_to_title[url] = title
             title_to_url[title] = url
+
+    # 0. Ensure every blockquote has an attribution line with source link
+    content = inject_quote_attributions(content, articles)
 
     # 1. Fix raw URLs in square brackets: [https://example.com/...] -> [Title](URL)
     def replace_bracketed_url(match):
