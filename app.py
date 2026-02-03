@@ -53,7 +53,7 @@ app = Flask(__name__)
 # Job state tracking (in-memory, single user)
 job_state = {
     "running": False,
-    "type": None,  # "ingest", "summarize", "pipeline", "embed", "score", "digest", or "chat"
+    "type": None,  # "ingest", "summarize", "pipeline", "embed", "score", or "digest"
     "stage": None,  # For pipeline: "ingest", "compress", "summarize", "embed"
     "current": 0,
     "total": 0,
@@ -441,7 +441,6 @@ def update_settings():
     set_setting("ollama_model", request.form.get("ollama_model", "llama3.2"))
     set_setting("ollama_num_ctx", request.form.get("ollama_num_ctx", "4096"))
     set_setting("ollama_temperature", request.form.get("ollama_temperature", "0.3"))
-    set_setting("ollama_system_prompt", request.form.get("ollama_system_prompt", ""))
 
     # Ingestion settings
     set_setting("jsonl_path", request.form.get("jsonl_path", ""))

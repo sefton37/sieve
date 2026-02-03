@@ -192,6 +192,7 @@ Sieve/
 ### 2. Article (`/article/<id>`)
 - Full article content
 - Summary with keywords (or "not yet summarized")
+- Relevance scoring: composite score, tier badge, convergence flag, per-dimension scores, rationale (if scored)
 - Button: "Regenerate summary"
 - Metadata: source, dates, link to original
 
@@ -221,10 +222,8 @@ Sieve/
 ### 6. Settings (`/settings`)
 - **Live stats** - Article count, summarized, embedded, scored, pending (auto-refreshing)
 - **Job management** - Hourly pipeline trigger, individual action buttons (ingest, summarize, embed, score), job progress display
-- **Ollama config** - Model dropdown (from installed models), context window slider, temperature, system prompt
-- **Embedding config** - Embedding model name
+- **Ollama config** - Model dropdown (from installed models), context window slider, temperature
 - **Ingestion** - JSONL path, auto-ingest toggle, cron schedule
-- **Digest** - Auto-digest toggle, digest cron schedule
 
 ## API Endpoints
 
@@ -287,7 +286,7 @@ LLM provides the 7 dimension scores + a rationale. Python computes composite (0-
 
 ### Digest (`/api/generate` with scored article batch)
 
-Retrieves last 24 hours of scored articles → groups by tier with proportional content budgets (T1: 3000 chars + rationale, T2: 1500 chars, T3: summary only, T4: title only, T5: excluded) → computes dimensional profile with elevation flags → generates 1500-2500 word narrative digest in Abend voice where analysis depth scales with article tier → post-processes to ensure hyperlinks and source attribution.
+Retrieves last 24 hours of scored articles → groups by tier with proportional content budgets (T1: 3000 chars + rationale, T2: 1500 chars, T3: summary only, T4: title only, T5: excluded) → computes dimensional profile with elevation flags → generates 1500-2500 word narrative digest in Abend voice where analysis depth scales with article tier → post-processes to ensure hyperlinks and source attribution. Uses streaming (`stream: true`) with extended timeouts (30s connect, 600s between chunks), dynamic context window sizing (minimum 32768, rounded up to fit prompt), and a 4096-token response cap.
 
 ## Setup
 
@@ -301,7 +300,7 @@ source venv/bin/activate
 # Install dependencies
 pip install flask requests apscheduler python-dateutil sqlite-vec
 
-# Run (database initializes automatically on first start)
+# Run (database initializes automatically on first start at /home/kellogg/data/sieve.db)
 python app.py
 
 # Open http://localhost:5000

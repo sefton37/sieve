@@ -323,7 +323,11 @@ def get_article(article_id):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, title, url, source, pub_date, pulled_at, content, summary, keywords, summarized_at, created_at
+            SELECT id, title, url, source, pub_date, pulled_at, content, summary, keywords, summarized_at, created_at,
+                   composite_score, relevance_tier, convergence_flag,
+                   d1_attention_economy, d2_data_sovereignty, d3_power_consolidation,
+                   d4_coercion_cooperation, d5_fear_trust, d6_democratization,
+                   d7_systemic_design, relevance_rationale, scored_at
             FROM articles
             WHERE id = ?
         """, (article_id,))

@@ -20,6 +20,33 @@
         {% include "partials/summary_section.html" %}
     </section>
 
+    <!-- Relevance Scoring -->
+    {% if article.scored_at %}
+    <section>
+        <h2>Relevance Score</h2>
+        <p>
+            <strong>Composite:</strong> {{ article.composite_score }}/21
+            &bull; <strong>Tier:</strong> {{ article.relevance_tier }}
+            {% if article.convergence_flag %}&bull; <strong>[CONVERGENCE]</strong>{% endif %}
+        </p>
+        <details>
+            <summary>Dimension scores</summary>
+            <ul>
+                <li>D1 Attention Economy: {{ article.d1_attention_economy }}/3</li>
+                <li>D2 Data Sovereignty: {{ article.d2_data_sovereignty }}/3</li>
+                <li>D3 Power Consolidation: {{ article.d3_power_consolidation }}/3</li>
+                <li>D4 Coercion vs Cooperation: {{ article.d4_coercion_cooperation }}/3</li>
+                <li>D5 Fear vs Trust: {{ article.d5_fear_trust }}/3</li>
+                <li>D6 Democratization: {{ article.d6_democratization }}/3</li>
+                <li>D7 Systemic Design: {{ article.d7_systemic_design }}/3</li>
+            </ul>
+        </details>
+        {% if article.relevance_rationale %}
+        <p><small><strong>Rationale:</strong> {{ article.relevance_rationale }}</small></p>
+        {% endif %}
+    </section>
+    {% endif %}
+
     <!-- Full Content -->
     <section>
         <h2>Full Content</h2>

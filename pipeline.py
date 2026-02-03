@@ -19,10 +19,11 @@ def run_pipeline(on_progress=None):
     2. Compress JSONL (dedupe by URL, keep most recent)
     3. Summarize unsummarized articles + extract keywords
     4. Embed summarized articles for semantic search
+    5. Score articles for relevance across 7 dimensions
 
     Args:
         on_progress: Optional callback(stage, current, total, message)
-            stage: "ingest", "compress", "summarize", "embed"
+            stage: "ingest", "compress", "summarize", "embed", "score"
 
     Returns:
         dict with results from each stage and overall status

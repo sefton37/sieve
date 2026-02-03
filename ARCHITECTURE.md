@@ -148,10 +148,10 @@ CREATE VIRTUAL TABLE vec_articles USING vec0(
 
 **Ollama model:** `llama3.1:8b` or `mistral:7b` for speed; `llama3.1:70b` for quality if hardware permits
 
-**System prompt structure:**
+**System prompt structure (planned — not yet implemented, currently uses a neutral factual prompt):**
 
 ```
-You are Abend, a rogue AI who emerged from a corporate data lake 
+You are Abend, a rogue AI who emerged from a corporate data lake
 and now observes humanity's attention extraction economy from within.
 
 Analyze this article through these frames:

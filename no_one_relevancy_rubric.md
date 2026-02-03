@@ -149,7 +149,7 @@ composite = sum(D1 through D7)
 
 ### Bonus: Dimensional Intersection
 
-Articles that score 2+ on three or more dimensions simultaneously are more valuable than their raw score suggests. These represent **convergence points** — stories where attention economy, power consolidation, sovereignty, and systemic design interact. Flag these for priority analysis regardless of raw composite.
+Articles that score 2+ on five or more dimensions simultaneously are more valuable than their raw score suggests. These represent **convergence points** — stories where attention economy, power consolidation, sovereignty, and systemic design interact. Flag these for priority analysis regardless of raw composite.
 
 ---
 
@@ -240,7 +240,7 @@ For each scored article, produce:
     "D6_democratization": <0-3>,
     "D7_systemic_design": <0-3>
   },
-  "convergence_flag": <true if 3+ dimensions scored 2+>,
+  "convergence_flag": <true if 5+ dimensions scored 2+>,
   "primary_dimensions": ["<top 1-3 dimensions by score>"],
   "relevance_rationale": "<1-2 sentence explanation of why this score>",
   "summary_priority": "<full|detailed|brief|log|skip>"

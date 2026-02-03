@@ -173,7 +173,7 @@ def schedule_pipeline(cron_expr):
             _run_scheduled_pipeline,
             trigger=trigger,
             id=PIPELINE_JOB_ID,
-            name="Hourly Pipeline (ingest + compress + summarize)",
+            name="Hourly Pipeline (ingest + compress + summarize + embed + score)",
             replace_existing=True,
         )
 

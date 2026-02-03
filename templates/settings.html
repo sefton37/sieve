@@ -18,7 +18,7 @@
 <section>
     <h2>Hourly Pipeline</h2>
     <p>
-        Runs automatically every hour: ingest new articles, compress JSONL, summarize unsummarized.
+        Runs automatically every hour: ingest new articles, compress JSONL, summarize, embed, and score.
         {% if next_pipeline_run %}
         <br><small>Next run: <strong>{{ next_pipeline_run|format_date }}</strong></small>
         {% endif %}
@@ -117,11 +117,6 @@
                    min="0" max="2" step="0.1">
         </label>
 
-        <label>
-            System Prompt
-            <textarea name="ollama_system_prompt" rows="4">{{ settings.ollama_system_prompt }}</textarea>
-            <small>Instructions for the summarization model</small>
-        </label>
     </section>
 
     <script>

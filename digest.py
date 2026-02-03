@@ -34,7 +34,7 @@ DIMENSION_KEYS = list(DIMENSION_LABELS.keys())
 # {t4_articles} = Tier 4 articles (titles only)
 ABEND_DIGEST_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy.
 
-Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Articles are grouped by priority tier. Convergence points (marked [CONVERGENCE]) have 3+ dimensions scoring 2+, indicating intersecting themes.
+Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Articles are grouped by priority tier. Convergence points (marked [CONVERGENCE]) have 5+ dimensions scoring 2+, indicating intersecting themes.
 
 **Today's intake:** {tier_summary}
 
