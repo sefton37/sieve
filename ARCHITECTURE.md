@@ -1,5 +1,7 @@
 # Abend Aggregator: Architectural Vision
 
+> **Note:** This document describes the full architectural vision. See "Implementation Status" below for what's currently built vs. planned.
+
 ## Overview
 
 A local-first news intelligence system that transforms raw article ingestion into connected, narrative-aware analysis. The architecture scales from simple RSS aggregation to longitudinal pattern recognition without requiring cloud dependencies.
@@ -79,44 +81,48 @@ A local-first news intelligence system that transforms raw article ingestion int
 - Store raw article data
 - Handle rate limits and failures gracefully
 
-**Database schema (articles table):**
+**Database schema (articles table) — current implementation:**
 
 ```sql
+-- Actual schema (SQLite + sqlite-vec)
 CREATE TABLE articles (
-    id              INTEGER PRIMARY KEY,
-    url             TEXT UNIQUE NOT NULL,
-    url_normalized  TEXT NOT NULL,           -- for dedup
-    content_hash    TEXT,                    -- for dedup
-    source          TEXT NOT NULL,
-    source_category TEXT NOT NULL,           -- wire|institutional|critical|edge
-    title           TEXT NOT NULL,
-    body            TEXT,
-    published_at    TIMESTAMP,
-    ingested_at     TIMESTAMP DEFAULT NOW(),
-    
-    -- Populated by enrichment layer
-    summary         TEXT,
-    entities        JSONB,                   -- extracted entities
-    topics          TEXT[],                  -- classified topics
-    embedding       VECTOR(768),             -- for similarity search
-    
-    -- Populated by synthesis layer
-    thread_ids      INTEGER[],               -- linked narrative threads
-    gap_score       FLOAT,                   -- stated intent vs actual dynamics
-    
-    CONSTRAINT valid_category CHECK (source_category IN ('wire', 'institutional', 'critical', 'edge'))
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    url TEXT UNIQUE NOT NULL,
+    source TEXT,
+    pub_date TEXT,
+    pulled_at TEXT,
+    content TEXT,
+    summary TEXT,
+    keywords TEXT,                    -- comma-separated keywords from LLM
+    summarized_at TEXT,
+    embedding BLOB,                  -- 768-dim float vector (struct-packed)
+    embedded_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_articles_published ON articles(published_at DESC);
-CREATE INDEX idx_articles_source ON articles(source);
-CREATE INDEX idx_articles_entities ON articles USING GIN(entities);
-CREATE INDEX idx_articles_topics ON articles USING GIN(topics);
+CREATE VIRTUAL TABLE vec_articles USING vec0(
+    article_id INTEGER PRIMARY KEY,
+    embedding float[768]
+);
+```
+
+**Aspirational schema additions** (not yet implemented):
+
+```sql
+-- Future columns for enrichment/synthesis layers
+    url_normalized  TEXT,            -- for advanced dedup
+    content_hash    TEXT,            -- for content-based dedup
+    source_category TEXT,            -- wire|institutional|critical|edge
+    entities        TEXT,            -- JSON extracted entities
+    topics          TEXT,            -- classified topics
+    thread_ids      TEXT,            -- linked narrative threads
+    gap_score       REAL,            -- stated intent vs actual dynamics
 ```
 
 **Deduplication strategy:**
-1. URL normalization (strip tracking params, canonicalize)
-2. Content hash on title + first 500 chars of body
-3. Embedding similarity check (>0.95 = likely duplicate)
+- **Current:** URL uniqueness constraint (simple, effective)
+- **Planned:** URL normalization (strip tracking params), content hash, embedding similarity (>0.95)
 
 ---
 
@@ -164,11 +170,11 @@ Credibility comes from knowing your limits.
 - Classify into topic clusters
 - Enable cross-article connections
 
-#### 3a: Embeddings
+#### 3a: Embeddings ✅ Implemented
 
 **Model:** `nomic-embed-text` via Ollama (768 dimensions)
 
-**Storage:** pgvector extension or ChromaDB sidecar
+**Storage:** sqlite-vec extension (vec0 virtual table with KNN search)
 
 **Embedding scope:** Concatenate title + summary (not full body) for semantic density
 
@@ -341,14 +347,15 @@ Store enriched article
 
 **Estimated time per article:** 30-60 seconds on consumer hardware
 
-### Batch (scheduled)
+### Batch (scheduled) — current implementation
 
-| Workflow | Schedule | Purpose |
-|----------|----------|---------|
-| RSS poll | Every 2-4 hours | Ingest new articles |
-| Daily digest | 6 AM local | Compile previous day's articles |
-| Thread synthesis | Weekly | Generate thread narratives |
-| Cleanup | Monthly | Archive old articles, prune orphan threads |
+| Workflow | Schedule | Purpose | Status |
+|----------|----------|---------|--------|
+| Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed | ✅ |
+| Daily digest | 6 AM (`0 6 * * *`) | Generate narrative briefing | ✅ |
+| Legacy ingest | Configurable cron | Standalone ingestion only | ✅ |
+| Thread synthesis | Weekly | Generate thread narratives | Planned |
+| Cleanup | Monthly | Archive old articles, prune orphan threads | Planned |
 
 ---
 
@@ -356,27 +363,34 @@ Store enriched article
 
 | Component | Tool | Notes |
 |-----------|------|-------|
-| Workflow automation | n8n | Self-hosted, handles RSS + scheduling |
-| Primary database | PostgreSQL + pgvector | Or SQLite + sqlite-vss for simpler setup |
-| Vector store (alt) | ChromaDB | If preferring separate vector DB |
-| Local LLM | Ollama | Embedding + summarization + extraction |
-| Models | llama3.1, nomic-embed-text | Adjust based on hardware |
+| Workflow automation | n8n | Self-hosted, handles RSS polling |
+| Web framework | Flask + HTMX | Server-rendered with progressive enhancement |
+| Primary database | SQLite + sqlite-vec | Local, zero config, vector search built in |
+| Local LLM | Ollama | Summarization, embeddings, chat, digests |
+| Summarization model | llama3.2 (default) | Configurable in settings |
+| Embedding model | nomic-embed-text | 768 dimensions |
+| Scheduling | APScheduler | Hourly pipeline, daily digest |
+| Styling | Pico CSS | Classless, minimal |
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Current)
-- [ ] RSS ingestion pipeline (n8n)
-- [ ] Basic article storage (PostgreSQL)
-- [ ] Abend summarization (Ollama)
-- [ ] Daily digest generation
+### Phase 1: Foundation ✅ Complete
+- [x] RSS ingestion pipeline (n8n → JSONL → Sieve)
+- [x] Basic article storage (SQLite)
+- [x] Summarization with keyword extraction (Ollama)
+- [x] Daily digest generation (Abend voice)
+- [x] Web UI: browse, filter, settings, job management
+- [x] Hourly pipeline orchestrator (ingest → compress → summarize → embed)
+- [x] SystemD service for deployment
 
-### Phase 2: Memory
-- [ ] Embedding generation at ingestion
-- [ ] Vector similarity search
-- [ ] Related article retrieval
-- [ ] Contextualized summarization
+### Phase 2: Memory (Partial)
+- [x] Embedding generation (nomic-embed-text, 768-dim, stored in sqlite-vec)
+- [x] Vector similarity search (KNN via vec_articles)
+- [x] Related article retrieval (used in RAG chat)
+- [x] RAG chat interface (embed query → search → generate with context)
+- [ ] Contextualized summarization (inject related articles into summary prompt)
 
 ### Phase 3: Structure
 - [ ] Entity extraction
@@ -390,11 +404,42 @@ Store enriched article
 - [ ] Pattern surfacing across sources
 - [ ] Gap analysis trending
 
-### Phase 5: Interface
-- [ ] Query interface (CLI or simple web)
-- [ ] Search by entity, topic, date range
+### Phase 5: Interface (Partial)
+- [x] Web interface (Flask + HTMX)
+- [x] Search by source, keyword, date range, text
 - [ ] Thread browsing
 - [ ] Export to blog drafts
+
+---
+
+## Implementation Status
+
+Summary of what's built vs. the full vision as of the current codebase:
+
+| Layer | Component | Status |
+|-------|-----------|--------|
+| 0: Data Sources | n8n RSS → JSONL | ✅ External to Sieve |
+| 1: Ingestion | JSONL parsing, URL dedup, SQLite storage | ✅ |
+| 1: Ingestion | URL normalization, content hashing | Not yet |
+| 2: Summarization | Batch summarization + keyword extraction | ✅ |
+| 2: Summarization | Abend-lens system prompt (gap score, fit) | Not yet (uses neutral prompt) |
+| 3: Enrichment | Embeddings (nomic-embed-text, sqlite-vec) | ✅ |
+| 3: Enrichment | Entity extraction | Not yet |
+| 3: Enrichment | Topic classification | Not yet |
+| 4: Synthesis | Daily digest (Abend voice) | ✅ |
+| 4: Synthesis | RAG chat over corpus | ✅ |
+| 4: Synthesis | Thread detection | Not yet |
+| 4: Synthesis | Weekly thread reports | Not yet |
+| 5: Presentation | Web UI (browse, filter, search, settings) | ✅ |
+| 5: Presentation | Chat interface | ✅ |
+| 5: Presentation | Digest viewer | ✅ |
+| 5: Presentation | Thread browsing, export | Not yet |
+
+**Key architectural decisions made:**
+- SQLite + sqlite-vec chosen over PostgreSQL + pgvector (simpler, local-first)
+- Summarization uses a neutral factual prompt (not Abend-lens) — Abend voice reserved for digests and chat
+- Keyword extraction added as lightweight alternative to full entity extraction
+- Batch pipeline (hourly) rather than real-time per-article processing
 
 ---
 

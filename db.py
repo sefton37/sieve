@@ -47,15 +47,16 @@ def init_db():
             )
         """)
 
-        # Add embedding columns if they don't exist (migration for existing DB)
-        try:
-            cursor.execute("ALTER TABLE articles ADD COLUMN embedding BLOB")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE articles ADD COLUMN embedded_at TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        # Add columns if they don't exist (migration for existing DBs)
+        for column_def in [
+            "keywords TEXT",
+            "embedding BLOB",
+            "embedded_at TEXT",
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE articles ADD COLUMN {column_def}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
         # Settings table
         cursor.execute("""
