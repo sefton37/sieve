@@ -98,6 +98,19 @@ CREATE TABLE articles (
     summarized_at TEXT,
     embedding BLOB,                  -- 768-dim float vector (struct-packed)
     embedded_at TEXT,
+    -- Relevance scoring (No One Rubric, 7 dimensions)
+    d1_attention_economy INTEGER,    -- 0-3
+    d2_data_sovereignty INTEGER,     -- 0-3
+    d3_power_consolidation INTEGER,  -- 0-3
+    d4_coercion_cooperation INTEGER, -- 0-3
+    d5_fear_trust INTEGER,           -- 0-3
+    d6_democratization INTEGER,      -- 0-3
+    d7_systemic_design INTEGER,      -- 0-3
+    composite_score INTEGER,         -- 0-21 sum of D1-D7
+    relevance_tier INTEGER,          -- 1 (critical) to 5 (skip)
+    convergence_flag INTEGER,        -- 1 if 5+ dims scored 2+
+    relevance_rationale TEXT,        -- LLM explanation
+    scored_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -178,7 +191,36 @@ Credibility comes from knowing your limits.
 
 **Embedding scope:** Concatenate title + summary (not full body) for semantic density
 
-#### 3b: Entity Extraction
+#### 3b: Relevance Scoring ✅ Implemented
+
+**Rubric:** No One Relevancy Rubric (`no_one_relevancy_rubric.md`) — 7 analytical dimensions examining power, attention, autonomy, and cooperation across technology, economics, governance, and culture.
+
+**Dimensions (each scored 0-3):**
+- D1: Attention Economy — how attention is captured, monetized, or defended
+- D2: Data Sovereignty — ownership and control of personal data and digital identity
+- D3: Power Consolidation — concentration or distribution of power
+- D4: Coercion vs Cooperation — forced compliance vs voluntary collaboration
+- D5: Fear vs Trust — fear or trust as organizing principles
+- D6: Democratization — distribution or restriction of access to tools and knowledge
+- D7: Systemic Design — structural incentives producing outcomes
+
+**Scoring split:** LLM provides qualitative dimension scores (0-3 each) + rationale. Python computes composite (sum, 0-21), tier (deterministic boundaries), and convergence flag deterministically.
+
+**Tier boundaries:**
+
+| Composite | Tier | Action |
+|-----------|------|--------|
+| 15-21 | T1 Critical | Full analysis in digest deep dives |
+| 10-14 | T2 High | Substantive coverage with dimension callouts |
+| 5-9 | T3 Notable | Brief mention, pattern fuel |
+| 1-4 | T4 Peripheral | Title only, skip unless connects to pattern |
+| 0 | T5 Skip | Excluded from digests entirely |
+
+**Convergence:** Articles with 5+ dimensions scoring 2+ are flagged as convergence points (~30% of corpus). These represent stories where multiple analytical lenses intersect on the same event — the structurally densest stories regardless of raw composite score.
+
+**Processing:** ~2.5 seconds per article. Same model as summarization. Runs as pipeline Stage 5 after embedding.
+
+#### 3c: Entity Extraction
 
 **Approach:** Lightweight NER pass via Ollama or local spaCy
 
@@ -201,7 +243,7 @@ Only include entities explicitly mentioned. No inference.
 
 **Storage:** JSONB column with GIN index for fast querying
 
-#### 3c: Topic Classification
+#### 3d: Topic Classification
 
 **Fixed taxonomy (expand as needed):**
 
@@ -290,11 +332,18 @@ Narrate the thread:
 
 **Output formats:**
 
-#### Daily Digest
-- Delivered as markdown file or rendered HTML
-- Grouped by source category or topic
-- Each article: headline, one-paragraph summary, gap score, link
-- Flagged high-gap articles highlighted
+#### Daily Digest ✅ Implemented (score-aware)
+- Score-aware narrative briefing in Abend voice
+- Articles grouped by relevance tier with proportional content budgets:
+  - T1 (critical): Full content excerpts + dimension scores + rationale → deep dive analysis
+  - T2 (high): Summary + moderate excerpts + dimension scores → substantive coverage
+  - T3 (notable): Summary + keywords only → brief mentions, pattern fuel
+  - T4 (peripheral): Title + score → mentioned only if connects to a pattern
+  - T5 (skip): Excluded entirely
+- Dimensional profile shows which themes dominate the day (with elevation flags)
+- Convergence points explicitly called out for cross-dimensional intersection
+- Post-processed to ensure hyperlinks and source attribution
+- Markdown rendering in web UI
 
 #### Weekly Thread Report
 - Narrative summaries of active threads
@@ -351,8 +400,8 @@ Store enriched article
 
 | Workflow | Schedule | Purpose | Status |
 |----------|----------|---------|--------|
-| Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed | ✅ |
-| Daily digest | 6 AM (`0 6 * * *`) | Generate narrative briefing | ✅ |
+| Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed → score | ✅ |
+| Daily digest | 6 AM (`0 6 * * *`) | Generate score-aware narrative briefing | ✅ |
 | Legacy ingest | Configurable cron | Standalone ingestion only | ✅ |
 | Thread synthesis | Weekly | Generate thread narratives | Planned |
 | Cleanup | Monthly | Archive old articles, prune orphan threads | Planned |
@@ -366,8 +415,9 @@ Store enriched article
 | Workflow automation | n8n | Self-hosted, handles RSS polling |
 | Web framework | Flask + HTMX | Server-rendered with progressive enhancement |
 | Primary database | SQLite + sqlite-vec | Local, zero config, vector search built in |
-| Local LLM | Ollama | Summarization, embeddings, chat, digests |
+| Local LLM | Ollama | Summarization, embeddings, scoring, chat, digests |
 | Summarization model | llama3.2 (default) | Configurable in settings |
+| Scoring rubric | No One Relevancy Rubric | 7 dimensions, see `no_one_relevancy_rubric.md` |
 | Embedding model | nomic-embed-text | 768 dimensions |
 | Scheduling | APScheduler | Hourly pipeline, daily digest |
 | Styling | Pico CSS | Classless, minimal |
@@ -382,15 +432,24 @@ Store enriched article
 - [x] Summarization with keyword extraction (Ollama)
 - [x] Daily digest generation (Abend voice)
 - [x] Web UI: browse, filter, settings, job management
-- [x] Hourly pipeline orchestrator (ingest → compress → summarize → embed)
+- [x] Hourly pipeline orchestrator (ingest → compress → summarize → embed → score)
 - [x] SystemD service for deployment
 
-### Phase 2: Memory (Partial)
+### Phase 2: Memory ✅ Complete
 - [x] Embedding generation (nomic-embed-text, 768-dim, stored in sqlite-vec)
 - [x] Vector similarity search (KNN via vec_articles)
 - [x] Related article retrieval (used in RAG chat)
 - [x] RAG chat interface (embed query → search → generate with context)
 - [ ] Contextualized summarization (inject related articles into summary prompt)
+
+### Phase 2.5: Relevance Scoring ✅ Complete
+- [x] 7-dimension relevance scoring via No One Rubric (score.py)
+- [x] Per-dimension scores (D1-D7, 0-3 each) stored as individual columns
+- [x] Composite score (0-21), tier (1-5), convergence flag (5+ dims at 2+)
+- [x] Score-aware daily digests (tiered content budgets, dimensional profile, convergence)
+- [x] Browse filtering by tier and sorting by score
+- [x] Score distribution dashboard (/scores)
+- [x] Score badges on article cards (color-coded by tier)
 
 ### Phase 3: Structure
 - [ ] Entity extraction
@@ -402,11 +461,12 @@ Store enriched article
 - [ ] Weekly thread reports
 - [ ] Blog candidate flagging
 - [ ] Pattern surfacing across sources
-- [ ] Gap analysis trending
+- [ ] Score-based trend analysis over time
 
 ### Phase 5: Interface (Partial)
 - [x] Web interface (Flask + HTMX)
-- [x] Search by source, keyword, date range, text
+- [x] Search by source, keyword, date range, text, tier, score
+- [x] Score distribution analytics page
 - [ ] Thread browsing
 - [ ] Export to blog drafts
 
@@ -424,15 +484,19 @@ Summary of what's built vs. the full vision as of the current codebase:
 | 2: Summarization | Batch summarization + keyword extraction | ✅ |
 | 2: Summarization | Abend-lens system prompt (gap score, fit) | Not yet (uses neutral prompt) |
 | 3: Enrichment | Embeddings (nomic-embed-text, sqlite-vec) | ✅ |
+| 3: Enrichment | 7-dimension relevance scoring (No One Rubric) | ✅ |
+| 3: Enrichment | Score distribution dashboard | ✅ |
 | 3: Enrichment | Entity extraction | Not yet |
 | 3: Enrichment | Topic classification | Not yet |
-| 4: Synthesis | Daily digest (Abend voice) | ✅ |
+| 4: Synthesis | Score-aware daily digest (Abend voice, tiered depth) | ✅ |
 | 4: Synthesis | RAG chat over corpus | ✅ |
 | 4: Synthesis | Thread detection | Not yet |
 | 4: Synthesis | Weekly thread reports | Not yet |
-| 5: Presentation | Web UI (browse, filter, search, settings) | ✅ |
+| 5: Presentation | Web UI (browse, filter, search, sort by score, tier filter) | ✅ |
+| 5: Presentation | Score badges on article cards | ✅ |
 | 5: Presentation | Chat interface | ✅ |
 | 5: Presentation | Digest viewer | ✅ |
+| 5: Presentation | Score analytics (/scores) | ✅ |
 | 5: Presentation | Thread browsing, export | Not yet |
 
 **Key architectural decisions made:**
@@ -440,6 +504,11 @@ Summary of what's built vs. the full vision as of the current codebase:
 - Summarization uses a neutral factual prompt (not Abend-lens) — Abend voice reserved for digests and chat
 - Keyword extraction added as lightweight alternative to full entity extraction
 - Batch pipeline (hourly) rather than real-time per-article processing
+- Relevance scoring as separate pipeline stage (not merged into summarization) — allows re-scoring without re-summarizing
+- LLM provides qualitative dimension scores; Python computes composite/tier/convergence deterministically — avoids LLM arithmetic errors
+- Per-dimension scores stored as individual INTEGER columns (not JSON blob) for SQL filtering/sorting
+- Convergence threshold set to 5+ dimensions at 2+ (~30% selectivity) to maintain signal value
+- Score-aware digests use tiered content budgets: context window allocated proportionally to article importance
 
 ---
 

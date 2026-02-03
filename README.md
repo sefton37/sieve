@@ -1,13 +1,13 @@
 # Sieve
 
-A local-first news intelligence tool that ingests RSS articles, summarizes and embeds them with Ollama, and provides a web interface for browsing, filtering, RAG-based chat, and daily digests.
+A local-first news intelligence tool that ingests RSS articles, summarizes, embeds, and scores them with Ollama, and provides a web interface for browsing, filtering, RAG-based chat, score-aware daily digests, and score distribution analytics.
 
 ## Overview
 
-Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries and embeddings via Ollama, and serves a web UI for browsing, chatting with the corpus, and reading daily digests.
+Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries, embeddings, and 7-dimension relevance scores via Ollama, and serves a web UI for browsing, chatting with the corpus, and reading score-prioritized daily digests.
 
 ```
-[n8n JSONL export] → [Sieve Pipeline] → [SQLite + sqlite-vec] → [Ollama Summarize + Embed] → [Web UI]
+[n8n JSONL export] → [Sieve Pipeline] → [SQLite + sqlite-vec] → [Ollama Summarize + Embed + Score] → [Web UI]
 ```
 
 ## Architecture
@@ -26,6 +26,7 @@ Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in
 │   │   2. Compress - Deduplicate source JSONL             │               │
 │   │   3. Summarize - Batch summarize via Ollama          │               │
 │   │   4. Embed    - Batch embed via Ollama               │               │
+│   │   5. Score    - 7-dimension relevance scoring        │               │
 │   └──────────────────┬───────────────────────────────────┘               │
 │                      │                                                   │
 │                      ▼                                                   │
@@ -43,9 +44,10 @@ Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in
 │            ▼                                                             │
 │   ┌──────────────────────────────────────────────────────┐               │
 │   │    Web UI (Flask + HTMX)      localhost:5000         │               │
-│   │   - Browse & filter articles                         │               │
+│   │   - Browse & filter articles (by score, tier, etc.)  │               │
 │   │   - Chat with corpus (RAG)                           │               │
-│   │   - Daily digests                                    │               │
+│   │   - Score-aware daily digests                        │               │
+│   │   - Score distribution dashboard                     │               │
 │   │   - Settings & job management                        │               │
 │   └──────────────────────────────────────────────────────┘               │
 │                                                                          │
@@ -80,6 +82,19 @@ CREATE TABLE articles (
     summarized_at TEXT,
     embedding BLOB,              -- 768-dim float vector (struct-packed)
     embedded_at TEXT,
+    -- Relevance scoring (7 dimensions, 0-3 each)
+    d1_attention_economy INTEGER,
+    d2_data_sovereignty INTEGER,
+    d3_power_consolidation INTEGER,
+    d4_coercion_cooperation INTEGER,
+    d5_fear_trust INTEGER,
+    d6_democratization INTEGER,
+    d7_systemic_design INTEGER,
+    composite_score INTEGER,     -- 0-21 sum of all dimensions
+    relevance_tier INTEGER,      -- 1-5 priority tier
+    convergence_flag INTEGER,    -- 1 if 5+ dimensions scored 2+
+    relevance_rationale TEXT,    -- LLM explanation of scoring
+    scored_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -136,24 +151,27 @@ Sieve/
 ├── ingest.py           # JSONL parsing and URL deduplication
 ├── summarize.py        # Ollama summarization with keyword extraction
 ├── embed.py            # Ollama embedding (nomic-embed-text, 768-dim)
-├── pipeline.py         # Orchestrator: ingest → compress → summarize → embed
+├── score.py            # 7-dimension relevance scoring via Ollama
+├── pipeline.py         # Orchestrator: ingest → compress → summarize → embed → score
 ├── scheduler.py        # APScheduler: hourly pipeline, daily digest
 ├── chat.py             # RAG chat: embed query → vector search → generate
-├── digest.py           # Daily digest generation in Abend voice
+├── digest.py           # Score-aware daily digest generation in Abend voice
+├── no_one_relevancy_rubric.md  # Scoring rubric (7 dimensions, tiers, convergence)
 ├── sieve.service       # SystemD service file for deployment
 ├── templates/
-│   ├── base.html       # Layout with nav (Browse, Chat, Digest, Settings)
-│   ├── index.html      # Article browser with filters
+│   ├── base.html       # Layout with nav (Browse, Chat, Digest, Scores, Settings)
+│   ├── index.html      # Article browser with filters (incl. tier, sort by score)
 │   ├── article.html    # Single article view
-│   ├── settings.html   # Config, stats, job triggers
+│   ├── settings.html   # Config, stats, job triggers (incl. score)
 │   ├── chat.html       # RAG chat interface
 │   ├── digest.html     # Daily digest viewer
+│   ├── scores.html     # Score distribution dashboard
 │   └── partials/
-│       ├── article_list.html      # Paginated article grid
+│       ├── article_list.html      # Paginated article grid with score badges
 │       ├── summary_section.html   # Summary + keywords display
 │       ├── job_status.html        # Job progress/status
 │       ├── chat_response.html     # Chat message rendering
-│       └── stats.html             # Live statistics
+│       └── stats.html             # Live statistics (incl. scored count)
 ├── static/
 │   └── style.css       # Custom overrides for Pico CSS
 ├── requirements.txt
@@ -166,8 +184,9 @@ Sieve/
 
 ### 1. Browse (`/`)
 - Paginated article grid
-- Filter by: source, keyword, summary status, date range, text search
-- Shows: title, source, date, summary preview, keyword tags
+- Filter by: source, keyword, summary status, date range, text search, relevance tier
+- Sort by: date (newest/oldest), score (highest/lowest)
+- Shows: title, source, date, summary preview, keyword tags, color-coded tier badge with score, convergence flag
 - Click to view full article
 
 ### 2. Article (`/article/<id>`)
@@ -184,14 +203,24 @@ Sieve/
 - Clear history button
 
 ### 4. Digest (`/digest`)
-- AI-generated daily briefings in Abend voice
+- Score-aware AI-generated daily briefings in Abend voice
+- Articles grouped by tier with proportional depth: T1 gets deep dives, T2 gets substantive coverage, T3 feeds pattern sections, T4 mentioned in passing, T5 excluded
+- Dimensional profile shows which analytical themes dominate the day
+- Convergence points highlighted for cross-dimensional intersection stories
 - Generate on demand or via scheduled job (default: 6 AM)
 - Markdown rendering with source links
 - Archive of recent digests (last 14)
 
-### 5. Settings (`/settings`)
-- **Live stats** - Article count, summarized, embedded, pending (auto-refreshing)
-- **Job management** - Hourly pipeline trigger, individual action buttons (ingest, summarize, embed), job progress display
+### 5. Scores (`/scores`)
+- Composite score histogram (0-21 distribution)
+- Statistics: mean, median, standard deviation
+- Tier distribution table with colored bars and percentages
+- Per-dimension averages (0-3 scale) showing which dimensions the corpus scores highest on
+- Convergence count and percentage
+
+### 6. Settings (`/settings`)
+- **Live stats** - Article count, summarized, embedded, scored, pending (auto-refreshing)
+- **Job management** - Hourly pipeline trigger, individual action buttons (ingest, summarize, embed, score), job progress display
 - **Ollama config** - Model dropdown (from installed models), context window slider, temperature, system prompt
 - **Embedding config** - Embedding model name
 - **Ingestion** - JSONL path, auto-ingest toggle, cron schedule
@@ -200,7 +229,7 @@ Sieve/
 ## API Endpoints
 
 ```
-GET  /                        # Browse articles (with filter/pagination params)
+GET  /                        # Browse articles (with filter/pagination/sort params)
 GET  /article/<id>            # Single article view
 POST /article/<id>/summarize  # Regenerate one summary
 
@@ -210,9 +239,12 @@ POST /settings                # Update settings
 POST /ingest                  # Trigger JSONL ingestion
 POST /summarize               # Trigger batch summarization
 POST /embed                   # Trigger batch embedding
-POST /pipeline                # Trigger full pipeline (ingest → compress → summarize → embed)
+POST /score                   # Trigger batch relevance scoring
+POST /pipeline                # Trigger full pipeline (ingest → compress → summarize → embed → score)
 GET  /status                  # Job status (HTMX partial or JSON)
 GET  /stats                   # Live statistics (HTMX partial)
+
+GET  /scores                  # Score distribution dashboard
 
 GET  /chat                    # Chat interface
 POST /chat                    # Send message (RAG query)
@@ -236,9 +268,26 @@ Embeds `title + summary` for each article using `nomic-embed-text` (768 dimensio
 
 Embeds user query → KNN search for top-5 similar articles → formats articles as context → generates response in Abend voice.
 
-### Digest (`/api/generate` with article batch)
+### Relevance Scoring (`/api/generate`)
 
-Retrieves last 24 hours of summarized articles → formats as context with content excerpts → generates 1500-2500 word narrative digest in Abend voice → post-processes to ensure hyperlinks and source attribution.
+Scores each article across 7 analytical dimensions (0-3 each) based on the No One Relevancy Rubric (`no_one_relevancy_rubric.md`):
+- **D1** Attention Economy, **D2** Data Sovereignty, **D3** Power Consolidation, **D4** Coercion vs Cooperation, **D5** Fear vs Trust, **D6** Democratization, **D7** Systemic Design
+
+LLM provides the 7 dimension scores + a rationale. Python computes composite (0-21), tier (1-5), and convergence flag deterministically. Convergence: 5+ dimensions scoring 2+ (marks ~30% of articles). Uses the same model as summarization. ~2.5 seconds per article.
+
+**Tier boundaries:**
+
+| Composite | Tier | Priority |
+|-----------|------|----------|
+| 15-21 | T1 | Critical — full analysis |
+| 10-14 | T2 | High — detailed summary |
+| 5-9 | T3 | Notable — brief mention |
+| 1-4 | T4 | Peripheral — log only |
+| 0 | T5 | Skip — excluded |
+
+### Digest (`/api/generate` with scored article batch)
+
+Retrieves last 24 hours of scored articles → groups by tier with proportional content budgets (T1: 3000 chars + rationale, T2: 1500 chars, T3: summary only, T4: title only, T5: excluded) → computes dimensional profile with elevation flags → generates 1500-2500 word narrative digest in Abend voice where analysis depth scales with article tier → post-processes to ensure hyperlinks and source attribution.
 
 ## Setup
 
@@ -274,15 +323,17 @@ sudo systemctl enable --now sieve
    - Compresses JSONL file (deduplicates source file)
    - Batch summarizes unsummarized articles via Ollama (with keyword extraction)
    - Batch embeds unembedded articles via Ollama
-3. **You browse** → filter articles, read summaries, explore keywords
+   - Batch scores articles across 7 relevance dimensions via Ollama
+3. **You browse** → filter articles by tier/score, sort by relevance, read summaries
 4. **You chat** → ask questions, get RAG-powered answers grounded in your articles
-5. **Daily digest** → generated at 6 AM (configurable), narrative briefing in Abend voice
+5. **Daily digest** → generated at 6 AM (configurable), score-aware narrative briefing in Abend voice with tiered depth
+6. **You review scores** → check distribution dashboard, see which dimensions dominate
 
 ## Scheduling
 
 | Job | Default Schedule | Purpose |
 |-----|-----------------|---------|
-| Pipeline | `0 * * * *` (hourly) | Full ingest → compress → summarize → embed cycle |
+| Pipeline | `0 * * * *` (hourly) | Full ingest → compress → summarize → embed → score cycle |
 | Digest | `0 6 * * *` (6 AM) | Generate daily briefing (if auto_digest enabled) |
 | Ingest | Configurable | Legacy standalone ingestion (if auto_ingest enabled) |
 
