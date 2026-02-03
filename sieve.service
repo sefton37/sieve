@@ -1,0 +1,20 @@
+[Unit]
+Description=Sieve News Intelligence Service
+After=network.target
+
+[Service]
+Type=simple
+User=kellogg
+WorkingDirectory=/home/kellogg/dev/Sieve
+Environment="PATH=/home/kellogg/dev/Sieve/venv/bin:/usr/bin:/bin"
+ExecStart=/home/kellogg/dev/Sieve/venv/bin/python app.py
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sieve
+
+[Install]
+WantedBy=multi-user.target

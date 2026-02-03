@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Sieve{% endblock %}
+
+{% block content %}
+<h1>Settings</h1>
+
+<section id="stats" hx-get="{{ url_for('stats') }}" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "partials/stats.html" %}
+</section>
+
+<!-- Job Status -->
+<section id="job-status" hx-get="{{ url_for('job_status') }}" hx-trigger="every 2s" hx-swap="innerHTML">
+    {% include "partials/job_status.html" %}
+</section>
+
+<!-- Hourly Pipeline -->
+<section>
+    <h2>Hourly Pipeline</h2>
+    <p>
+        Runs automatically every hour: ingest new articles, compress JSONL, summarize unsummarized.
+        {% if next_pipeline_run %}
+        <br><small>Next run: <strong>{{ next_pipeline_run|format_date }}</strong></small>
+        {% endif %}
+    </p>
+    <button
+        hx-post="{{ url_for('trigger_pipeline') }}"
+        hx-target="#job-status"
+        hx-swap="innerHTML"
+        class="primary"
+    >
+        Run Pipeline Now
+    </button>
+</section>
+
+<!-- Manual Actions -->
+<section>
+    <details>
+        <summary>Individual Actions</summary>
+        <p><small>Run individual steps instead of the full pipeline.</small></p>
+        <div class="grid">
+            <button
+                hx-post="{{ url_for('trigger_ingest') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Ingest Only
+            </button>
+
+            <button
+                hx-post="{{ url_for('trigger_summarize') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Summarize Only
+            </button>
+
+            <button
+                hx-post="{{ url_for('trigger_embed') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Embed Only
+            </button>
+        </div>
+    </details>
+</section>
+
+<hr>
+
+<!-- Settings Form -->
+<form method="post" action="{{ url_for('update_settings') }}">
+
+    <!-- Ollama Settings -->
+    <section>
+        <h2>Ollama Configuration</h2>
+
+        <label>
+            Model
+            {% if ollama_models %}
+            <select name="ollama_model" id="ollama_model">
+                {% for model in ollama_models %}
+                <option value="{{ model }}" {% if model == settings.ollama_model %}selected{% endif %}>{{ model }}</option>
+                {% endfor %}
+            </select>
+            <small>{{ ollama_models|length }} models available from Ollama</small>
+            {% else %}
+            <input type="text" name="ollama_model" id="ollama_model" value="{{ settings.ollama_model }}" placeholder="llama3.2">
+            <small class="warning">Could not connect to Ollama - enter model name manually</small>
+            {% endif %}
+        </label>
+
+        <label>
+            Context Window (num_ctx): <strong id="ctx_display">{{ settings.ollama_num_ctx }}</strong>
+            <input type="range" name="ollama_num_ctx" id="ollama_num_ctx"
+                   value="{{ settings.ollama_num_ctx }}"
+                   min="1024" max="131072" step="1024">
+            <small>Max: <span id="ctx_max_display">131072</span> (based on model)</small>
+        </label>
+
+        <label>
+            Temperature: <strong id="temp_display">{{ settings.ollama_temperature }}</strong>
+            <input type="range" name="ollama_temperature" id="ollama_temperature"
+                   value="{{ settings.ollama_temperature }}"
+                   min="0" max="2" step="0.1">
+        </label>
+
+        <label>
+            System Prompt
+            <textarea name="ollama_system_prompt" rows="4">{{ settings.ollama_system_prompt }}</textarea>
+            <small>Instructions for the summarization model</small>
+        </label>
+    </section>
+
+    <script>
+    (function() {
+        // Model context window limits (conservative defaults)
+        const modelContextLimits = {
+            'llama3.2': 131072,
+            'llama3.1': 131072,
+            'llama3': 8192,
+            'llama2': 4096,
+            'mistral': 32768,
+            'mixtral': 32768,
+            'phi3': 131072,
+            'phi': 2048,
+            'gemma2': 8192,
+            'gemma': 8192,
+            'qwen2.5': 131072,
+            'qwen2': 131072,
+            'qwen': 32768,
+            'codellama': 16384,
+            'deepseek': 131072,
+            'command-r': 131072,
+            'yi': 131072,
+        };
+        const defaultMax = 32768;
+
+        const modelInput = document.getElementById('ollama_model');
+        const ctxSlider = document.getElementById('ollama_num_ctx');
+        const ctxDisplay = document.getElementById('ctx_display');
+        const ctxMaxDisplay = document.getElementById('ctx_max_display');
+        const tempSlider = document.getElementById('ollama_temperature');
+        const tempDisplay = document.getElementById('temp_display');
+
+        function getMaxContext(modelName) {
+            if (!modelName) return defaultMax;
+            const name = modelName.toLowerCase().split(':')[0];
+            // Check for exact match first
+            if (modelContextLimits[name]) return modelContextLimits[name];
+            // Check for prefix match (e.g., "llama3.2-vision" matches "llama3.2")
+            for (const [key, value] of Object.entries(modelContextLimits)) {
+                if (name.startsWith(key)) return value;
+            }
+            return defaultMax;
+        }
+
+        function updateContextLimit() {
+            const maxCtx = getMaxContext(modelInput.value);
+            ctxSlider.max = maxCtx;
+            ctxMaxDisplay.textContent = maxCtx.toLocaleString();
+            // Clamp current value if it exceeds new max
+            if (parseInt(ctxSlider.value) > maxCtx) {
+                ctxSlider.value = maxCtx;
+                ctxDisplay.textContent = maxCtx.toLocaleString();
+            }
+        }
+
+        // Update displays when sliders change
+        ctxSlider.addEventListener('input', function() {
+            ctxDisplay.textContent = parseInt(this.value).toLocaleString();
+        });
+
+        tempSlider.addEventListener('input', function() {
+            tempDisplay.textContent = this.value;
+        });
+
+        // Update context limit when model changes
+        modelInput.addEventListener('input', updateContextLimit);
+        modelInput.addEventListener('change', updateContextLimit);
+
+        // Initialize on page load
+        updateContextLimit();
+        ctxDisplay.textContent = parseInt(ctxSlider.value).toLocaleString();
+    })();
+    </script>
+
+    <hr>
+
+    <!-- Ingestion Settings -->
+    <section>
+        <h2>Ingestion Configuration</h2>
+
+        <label>
+            JSONL File Path
+            <input type="text" name="jsonl_path" value="{{ settings.jsonl_path }}" placeholder="/home/kellogg/data/rssfeed.jsonl">
+            <small>Path to the JSONL file to ingest</small>
+        </label>
+
+        <label>
+            <input type="checkbox" name="auto_ingest" {% if settings.auto_ingest == 'true' %}checked{% endif %}>
+            Enable automatic ingestion
+        </label>
+
+        <label>
+            Cron Schedule
+            <input type="text" name="ingest_schedule" value="{{ settings.ingest_schedule }}" placeholder="0 */6 * * *">
+            <small>Cron expression for auto-ingest (minute hour day month weekday). Example: "0 */6 * * *" for every 6 hours</small>
+        </label>
+    </section>
+
+    <hr>
+
+    <button type="submit">Save Settings</button>
+</form>
+{% endblock %}

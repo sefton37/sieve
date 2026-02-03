@@ -1,0 +1,5 @@
+flask
+requests
+apscheduler
+python-dateutil
+sqlite-vec

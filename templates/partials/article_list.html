@@ -1,0 +1,52 @@
+<p><small>Showing {{ articles|length }} of {{ total }} articles (Page {{ page }} of {{ total_pages }})</small></p>
+
+{% if articles %}
+<div class="article-grid">
+    {% for article in articles %}
+    <article class="article-card">
+        <header>
+            <a href="{{ url_for('article_view', article_id=article.id) }}">
+                <strong>{{ article.title }}</strong>
+            </a>
+        </header>
+        <p class="meta">
+            <small>
+                {{ article.source }} &bull;
+                {{ article.pub_date|format_date }}
+            </small>
+        </p>
+        {% if article.summary %}
+        <p class="summary">{{ article.summary }}</p>
+        {% if article.keywords %}
+        <p class="keywords">
+            {% for kw in article.keywords.split(',') %}
+            <span class="keyword-tag">{{ kw.strip() }}</span>
+            {% endfor %}
+        </p>
+        {% endif %}
+        {% else %}
+        <p class="content-preview">{{ article.content|truncate_content(200) }}</p>
+        <p><small><em>Not yet summarized</em></small></p>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav class="pagination">
+    {% if page > 1 %}
+    <a href="{{ url_for('index', page=page-1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword) }}">&laquo; Previous</a>
+    {% endif %}
+
+    <span>Page {{ page }} of {{ total_pages }}</span>
+
+    {% if page < total_pages %}
+    <a href="{{ url_for('index', page=page+1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword) }}">Next &raquo;</a>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<p>No articles found matching your filters.</p>
+{% endif %}

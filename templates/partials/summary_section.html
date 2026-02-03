@@ -1,0 +1,28 @@
+<h2>Summary</h2>
+
+{% if article.summary %}
+<blockquote>
+    {{ article.summary }}
+</blockquote>
+{% if article.keywords %}
+<p class="keywords">
+    <strong>Keywords:</strong>
+    {% for kw in article.keywords.split(',') %}
+    <span class="keyword-tag">{{ kw.strip() }}</span>
+    {% endfor %}
+</p>
+{% endif %}
+<p><small>Summarized: {{ article.summarized_at|format_date }}</small></p>
+{% else %}
+<p><em>Not yet summarized.</em></p>
+{% endif %}
+
+<button
+    hx-post="{{ url_for('regenerate_summary', article_id=article.id) }}"
+    hx-target="#summary-section"
+    hx-swap="innerHTML"
+    hx-indicator="#summary-indicator"
+>
+    {% if article.summary %}Regenerate Summary{% else %}Generate Summary{% endif %}
+</button>
+<span id="summary-indicator" class="htmx-indicator">Processing...</span>

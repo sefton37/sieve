@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Articles - Sieve{% endblock %}
+
+{% block content %}
+<h1>Articles</h1>
+
+<p class="stats">
+    <small>{{ article_count }} articles total, {{ summarized_count }} summarized</small>
+</p>
+
+<!-- Filters -->
+<details open>
+    <summary>Filters</summary>
+    <form method="get" action="{{ url_for('index') }}">
+        <div class="grid">
+            <label>
+                Source
+                <select name="source">
+                    <option value="">All Sources</option>
+                    {% for s in sources %}
+                    <option value="{{ s }}" {% if s == source %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>
+                Keyword
+                <select name="keyword">
+                    <option value="">All Keywords</option>
+                    {% for k in keywords %}
+                    <option value="{{ k }}" {% if k == keyword %}selected{% endif %}>{{ k }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>
+                Summary
+                <select name="has_summary">
+                    <option value="">Any</option>
+                    <option value="yes" {% if has_summary == 'yes' %}selected{% endif %}>Has Summary</option>
+                    <option value="no" {% if has_summary == 'no' %}selected{% endif %}>No Summary</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="grid">
+            <label>
+                Search
+                <input type="text" name="search" value="{{ search }}" placeholder="Search titles...">
+            </label>
+
+            <label>
+                From Date
+                <input type="date" name="date_from" value="{{ date_from }}">
+            </label>
+
+            <label>
+                To Date
+                <input type="date" name="date_to" value="{{ date_to }}">
+            </label>
+        </div>
+
+        <button type="submit">Apply Filters</button>
+    </form>
+</details>
+
+<!-- Article List -->
+<div id="article-list">
+    {% include "partials/article_list.html" %}
+</div>
+{% endblock %}

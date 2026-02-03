@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - Sieve{% endblock %}
+
+{% block content %}
+<h1>Chat with Abend</h1>
+<p class="stats">Ask questions about your news collection. Abend will search for relevant articles and synthesize an answer.</p>
+
+<!-- Chat History -->
+<section id="chat-history" class="chat-history">
+    {% for msg in messages %}
+    <article class="chat-message {{ msg.role }}">
+        <header>
+            <strong>{% if msg.role == 'user' %}You{% else %}Abend{% endif %}</strong>
+            <small>{{ msg.created_at|format_date }}</small>
+        </header>
+        {% if msg.role == 'assistant' %}
+        <div class="message-content markdown-body" data-markdown="{{ msg.content|e }}"></div>
+        {% else %}
+        <div class="message-content">{{ msg.content }}</div>
+        {% endif %}
+        {% if msg.role == 'assistant' and msg.sources %}
+        <footer class="sources">
+            <small>Sources: {{ msg.sources|length }} articles</small>
+        </footer>
+        {% endif %}
+    </article>
+    {% else %}
+    <article class="chat-empty">
+        <p>No messages yet. Ask Abend a question about your news collection.</p>
+    </article>
+    {% endfor %}
+</section>
+
+<!-- Chat Input -->
+<section class="chat-input">
+    <form
+        hx-post="{{ url_for('send_chat_message') }}"
+        hx-target="#chat-history"
+        hx-swap="beforeend"
+        hx-on::after-request="this.reset(); document.querySelector('.chat-empty')?.remove();"
+    >
+        <div class="grid">
+            <input
+                type="text"
+                name="message"
+                placeholder="Ask about your news..."
+                autocomplete="off"
+                required
+            >
+            <button type="submit">
+                Send
+                <span class="htmx-indicator">...</span>
+            </button>
+        </div>
+    </form>
+
+    <div class="chat-actions">
+        <button
+            hx-post="{{ url_for('clear_chat') }}"
+            hx-target="#chat-history"
+            hx-swap="innerHTML"
+            hx-confirm="Clear all chat history?"
+            class="secondary outline"
+        >
+            Clear History
+        </button>
+    </div>
+</section>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Configure marked
+    marked.setOptions({
+        breaks: true,
+        gfm: true
+    });
+
+    // Render existing markdown content
+    renderMarkdown();
+
+    // Re-render after HTMX swaps in new content
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        renderMarkdown();
+        // Scroll to bottom of chat
+        const history = document.getElementById('chat-history');
+        if (history) {
+            history.scrollTop = history.scrollHeight;
+        }
+    });
+});
+
+function renderMarkdown() {
+    document.querySelectorAll('.markdown-body[data-markdown]').forEach(function(el) {
+        if (!el.dataset.rendered) {
+            const markdown = el.getAttribute('data-markdown');
+            el.innerHTML = marked.parse(markdown);
+            el.dataset.rendered = 'true';
+        }
+    });
+}
+</script>
+
+<style>
+.chat-history {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 1rem;
+    background: var(--card-background-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+}
+
+.chat-message {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: var(--border-radius);
+}
+
+.chat-message.user {
+    background: var(--secondary-background);
+    margin-left: 2rem;
+}
+
+.chat-message.assistant {
+    background: var(--primary-background);
+    margin-right: 2rem;
+}
+
+.chat-message header {
+    padding: 0;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-message .message-content {
+    line-height: 1.6;
+}
+
+.chat-message .message-content p {
+    margin-bottom: 0.5rem;
+}
+
+.chat-message .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-message .message-content a {
+    color: var(--primary);
+}
+
+.chat-message footer.sources {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--muted-border-color);
+}
+
+.chat-empty {
+    text-align: center;
+    color: var(--muted-color);
+    padding: 2rem;
+}
+
+.chat-input {
+    margin-top: 1rem;
+}
+
+.chat-actions {
+    margin-top: 0.5rem;
+    text-align: right;
+}
+
+.chat-actions button {
+    width: auto;
+}
+</style>
+{% endblock %}

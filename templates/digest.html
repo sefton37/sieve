@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Digest - Sieve{% endblock %}
+
+{% block content %}
+<h1>Daily Digest</h1>
+<p class="stats">
+    Abend's morning briefings on the attention extraction economy.
+    {% if next_digest_run %}
+    <br><small>Next scheduled: <strong>{{ next_digest_run|format_date }}</strong></small>
+    {% endif %}
+</p>
+
+<!-- Job Status -->
+<section id="job-status" hx-get="{{ url_for('job_status') }}" hx-trigger="every 2s" hx-swap="innerHTML">
+    {% include "partials/job_status.html" %}
+</section>
+
+<!-- Generate Button -->
+<section>
+    <button
+        hx-post="{{ url_for('trigger_digest') }}"
+        hx-target="#job-status"
+        hx-swap="innerHTML"
+        class="primary"
+    >
+        Generate Today's Digest
+    </button>
+</section>
+
+<hr>
+
+<!-- Recent Digests -->
+<section>
+    <h2>Recent Briefings</h2>
+
+    {% if digests %}
+    {% for digest in digests %}
+    <article class="digest-card">
+        <header>
+            <strong>{{ digest.digest_date }}</strong>
+            <small>{{ digest.article_count }} articles</small>
+        </header>
+        <div class="digest-content markdown-body" data-markdown="{{ digest.content|e }}"></div>
+        <footer>
+            <small>Generated {{ digest.created_at|format_date }}</small>
+        </footer>
+    </article>
+    {% endfor %}
+    {% else %}
+    <article>
+        <p>No digests yet. Click "Generate Today's Digest" to create your first briefing.</p>
+    </article>
+    {% endif %}
+</section>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Configure marked for safe rendering
+    marked.setOptions({
+        breaks: false,
+        gfm: true
+    });
+
+    // Render all markdown content
+    document.querySelectorAll('.markdown-body[data-markdown]').forEach(function(el) {
+        const markdown = el.getAttribute('data-markdown');
+        el.innerHTML = marked.parse(markdown);
+    });
+});
+</script>
+
+<style>
+.digest-card {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid var(--primary);
+}
+
+.digest-card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0;
+}
+
+.digest-content {
+    line-height: 1.45;
+}
+
+.digest-content h1,
+.digest-content h2,
+.digest-content h3,
+.digest-content h4,
+.digest-content h5,
+.digest-content h6 {
+    margin-top: 0.6rem;
+    margin-bottom: 0.15rem;
+    padding: 0;
+}
+
+.digest-content h2 { font-size: 1.15rem; }
+.digest-content h3 { font-size: 1.05rem; }
+
+.digest-content p {
+    margin-top: 0;
+    margin-bottom: 0.25rem;
+}
+
+.digest-content ul, .digest-content ol {
+    margin-top: 0.1rem;
+    margin-bottom: 0.25rem;
+    padding-left: 1.5rem;
+}
+
+.digest-content li {
+    margin-bottom: 0.1rem;
+}
+
+.digest-content blockquote {
+    margin: 0.2rem 0;
+    padding: 0.2rem 0.8rem;
+    border-left: 3px solid var(--muted-border-color);
+    font-style: italic;
+}
+
+.digest-content blockquote p {
+    margin-bottom: 0.1rem;
+}
+
+.digest-content hr {
+    margin: 0.5rem 0;
+}
+
+.digest-content > *:first-child {
+    margin-top: 0;
+}
+
+.digest-content a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.digest-card footer {
+    margin-top: 1rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--muted-border-color);
+}
+</style>
+{% endblock %}

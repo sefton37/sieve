@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ article.title }} - Sieve{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <h1>{{ article.title }}</h1>
+        <p class="meta">
+            <strong>{{ article.source }}</strong> &bull;
+            Published: {{ article.pub_date|format_date }}
+            {% if article.url %}
+            &bull; <a href="{{ article.url }}" target="_blank" rel="noopener">Original Article</a>
+            {% endif %}
+        </p>
+    </header>
+
+    <!-- Summary Section -->
+    <section id="summary-section">
+        {% include "partials/summary_section.html" %}
+    </section>
+
+    <!-- Full Content -->
+    <section>
+        <h2>Full Content</h2>
+        <div class="article-content">
+            {{ article.content|safe if article.content else "No content available." }}
+        </div>
+    </section>
+
+    <footer>
+        <a href="{{ url_for('index') }}">&laquo; Back to Articles</a>
+    </footer>
+</article>
+{% endblock %}

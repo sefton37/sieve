@@ -1,0 +1,32 @@
+<!-- User message -->
+<article class="chat-message user">
+    <header>
+        <strong>You</strong>
+        <small>Just now</small>
+    </header>
+    <div class="message-content">{{ user_message }}</div>
+</article>
+
+<!-- Assistant response -->
+<article class="chat-message assistant">
+    <header>
+        <strong>Abend</strong>
+        <small>Just now</small>
+    </header>
+    <div class="message-content markdown-body" data-markdown="{{ assistant_message|e }}"></div>
+    {% if source_articles %}
+    <footer class="sources">
+        <small>
+            <strong>Sources:</strong>
+            {% for article in source_articles %}
+            <a href="{{ url_for('article_view', article_id=article.id) }}">{{ article.title|truncate(40) }}</a>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </small>
+    </footer>
+    {% endif %}
+    {% if error %}
+    <footer class="error">
+        <small class="warning">{{ error }}</small>
+    </footer>
+    {% endif %}
+</article>

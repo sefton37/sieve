@@ -1,0 +1,94 @@
+{% if job_state.running %}
+<article class="job-running">
+    <header>
+        <strong>Job Running: {{ job_state.type|title }}</strong>
+        {% if job_state.type == 'pipeline' and job_state.stage %}
+        <small> ({{ job_state.stage }})</small>
+        {% endif %}
+    </header>
+    {% if job_state.total > 0 %}
+    <progress value="{{ job_state.current }}" max="{{ job_state.total }}"></progress>
+    <p>{{ job_state.current }} / {{ job_state.total }}</p>
+    {% else %}
+    <progress></progress>
+    {% endif %}
+    {% if job_state.message %}
+    <p>{{ job_state.message }}</p>
+    {% elif not job_state.total %}
+    <p>Starting...</p>
+    {% endif %}
+</article>
+{% elif job_state.error %}
+<article class="job-error">
+    <header><strong>Job Failed</strong></header>
+    <p>{{ job_state.error }}</p>
+</article>
+{% elif job_state.result %}
+<article class="job-complete">
+    <header><strong>Job Complete</strong></header>
+    {% if job_state.type == 'ingest' %}
+    <p>
+        Inserted: {{ job_state.result.inserted }},
+        Skipped: {{ job_state.result.skipped }}
+        {% if job_state.result.errors %}, Errors: {{ job_state.result.errors|length }}{% endif %}
+    </p>
+    {% elif job_state.type == 'summarize' %}
+    <p>
+        Summarized: {{ job_state.result.summarized }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
+    {% elif job_state.type == 'embed' %}
+    <p>
+        Embedded: {{ job_state.result.embedded }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
+    {% elif job_state.type == 'digest' %}
+    <p>
+        {% if job_state.result.success %}
+        Digest generated with {{ job_state.result.article_count }} articles
+        {% else %}
+        Failed: {{ job_state.result.error }}
+        {% endif %}
+    </p>
+    {% elif job_state.type == 'pipeline' %}
+    <p>
+        {% if job_state.result.ingest %}
+        Ingested: {{ job_state.result.ingest.inserted }} new
+        {% endif %}
+        {% if job_state.result.compress %}
+        | Deduped: {{ job_state.result.compress.removed_count }}
+        {% endif %}
+        {% if job_state.result.summarize %}
+        | Summarized: {{ job_state.result.summarize.summarized }}
+        {% endif %}
+        {% if job_state.result.embed %}
+        | Embedded: {{ job_state.result.embed.embedded }}
+        {% endif %}
+    </p>
+    {% if job_state.result.summarize and job_state.result.summarize.stopped_early %}
+    <p><mark>SUMMARIZATION STOPPED EARLY</mark></p>
+    {% if job_state.result.summarize.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.summarize.last_error }}</small></p>
+    {% endif %}
+    {% endif %}
+    {% if job_state.result.embed and job_state.result.embed.stopped_early %}
+    <p><mark>EMBEDDING STOPPED EARLY</mark></p>
+    {% if job_state.result.embed.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.embed.last_error }}</small></p>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+</article>
+{% else %}
+<article class="job-idle">
+    <p>No job running</p>
+</article>
+{% endif %}
