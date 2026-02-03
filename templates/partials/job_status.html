@@ -50,6 +50,15 @@
     {% if job_state.result.last_error %}
     <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
     {% endif %}
+    {% elif job_state.type == 'score' %}
+    <p>
+        Scored: {{ job_state.result.scored }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
     {% elif job_state.type == 'digest' %}
     <p>
         {% if job_state.result.success %}
@@ -72,6 +81,9 @@
         {% if job_state.result.embed %}
         | Embedded: {{ job_state.result.embed.embedded }}
         {% endif %}
+        {% if job_state.result.score %}
+        | Scored: {{ job_state.result.score.scored }}
+        {% endif %}
     </p>
     {% if job_state.result.summarize and job_state.result.summarize.stopped_early %}
     <p><mark>SUMMARIZATION STOPPED EARLY</mark></p>
@@ -83,6 +95,12 @@
     <p><mark>EMBEDDING STOPPED EARLY</mark></p>
     {% if job_state.result.embed.last_error %}
     <p><small><strong>Error:</strong> {{ job_state.result.embed.last_error }}</small></p>
+    {% endif %}
+    {% endif %}
+    {% if job_state.result.score and job_state.result.score.stopped_early %}
+    <p><mark>SCORING STOPPED EARLY</mark></p>
+    {% if job_state.result.score.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.score.last_error }}</small></p>
     {% endif %}
     {% endif %}
     {% endif %}

@@ -52,6 +52,18 @@ def init_db():
             "keywords TEXT",
             "embedding BLOB",
             "embedded_at TEXT",
+            "d1_attention_economy INTEGER",
+            "d2_data_sovereignty INTEGER",
+            "d3_power_consolidation INTEGER",
+            "d4_coercion_cooperation INTEGER",
+            "d5_fear_trust INTEGER",
+            "d6_democratization INTEGER",
+            "d7_systemic_design INTEGER",
+            "composite_score INTEGER",
+            "relevance_tier INTEGER",
+            "convergence_flag INTEGER",
+            "relevance_rationale TEXT",
+            "scored_at TEXT",
         ]:
             try:
                 cursor.execute(f"ALTER TABLE articles ADD COLUMN {column_def}")
@@ -103,6 +115,9 @@ def init_db():
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_articles_embedded_at ON articles(embedded_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_articles_composite_score ON articles(composite_score)
         """)
 
         # Create vector search virtual table using sqlite-vec
@@ -197,7 +212,7 @@ def insert_article(article_dict):
             return None
 
 
-def get_articles(filters=None, page=1, per_page=20):
+def get_articles(filters=None, page=1, per_page=20, sort="date_desc"):
     """
     Get paginated list of articles with optional filters.
 
@@ -208,6 +223,16 @@ def get_articles(filters=None, page=1, per_page=20):
         - date_to: ISO date string for end date
         - search: text search in title
         - keyword: filter by keyword (partial match)
+        - tier: integer 1-5 to filter by relevance tier
+        - score_min: minimum composite score (0-21)
+        - score_max: maximum composite score (0-21)
+        - has_score: True/False to filter by score presence
+
+    sort can be:
+        - "date_desc" (default): newest first
+        - "date_asc": oldest first
+        - "score_desc": highest composite score first
+        - "score_asc": lowest composite score first
 
     Returns: (list of article dicts, total count)
     """
@@ -241,7 +266,33 @@ def get_articles(filters=None, page=1, per_page=20):
         where_clauses.append("keywords LIKE ?")
         params.append(f"%{filters['keyword']}%")
 
+    if filters.get("tier") is not None:
+        where_clauses.append("relevance_tier = ?")
+        params.append(filters["tier"])
+
+    if filters.get("score_min") is not None:
+        where_clauses.append("composite_score >= ?")
+        params.append(filters["score_min"])
+
+    if filters.get("score_max") is not None:
+        where_clauses.append("composite_score <= ?")
+        params.append(filters["score_max"])
+
+    if filters.get("has_score") is True:
+        where_clauses.append("scored_at IS NOT NULL")
+    elif filters.get("has_score") is False:
+        where_clauses.append("scored_at IS NULL")
+
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+    # Determine sort order
+    sort_options = {
+        "date_desc": "pub_date DESC",
+        "date_asc": "pub_date ASC",
+        "score_desc": "composite_score DESC NULLS LAST, pub_date DESC",
+        "score_asc": "composite_score ASC NULLS LAST, pub_date DESC",
+    }
+    order_sql = sort_options.get(sort, "pub_date DESC")
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -253,10 +304,12 @@ def get_articles(filters=None, page=1, per_page=20):
         # Get paginated results
         offset = (page - 1) * per_page
         cursor.execute(f"""
-            SELECT id, title, url, source, pub_date, pulled_at, content, summary, keywords, summarized_at, created_at
+            SELECT id, title, url, source, pub_date, pulled_at, content, summary,
+                   keywords, summarized_at, created_at, composite_score, relevance_tier,
+                   convergence_flag
             FROM articles
             WHERE {where_sql}
-            ORDER BY pub_date DESC
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?
         """, params + [per_page, offset])
 
@@ -373,6 +426,110 @@ def get_embedded_count():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM articles WHERE embedded_at IS NOT NULL")
         return cursor.fetchone()[0]
+
+
+# ============================================================================
+# Relevance scoring functions
+# ============================================================================
+
+def get_unscored_articles():
+    """Get all articles with summary but no relevance score."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, content, summary, keywords
+            FROM articles
+            WHERE summary IS NOT NULL AND scored_at IS NULL
+            ORDER BY pub_date DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def update_relevance_scores(article_id, scores, composite, tier, convergence, rationale):
+    """Store relevance scores for an article.
+
+    Args:
+        article_id: Article ID
+        scores: dict with keys D1-D7 (e.g. {"d1_attention_economy": 2, ...})
+        composite: 0-21 sum of all dimensions
+        tier: 1-5 priority tier
+        convergence: 0 or 1
+        rationale: 1-2 sentence explanation
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE articles
+            SET d1_attention_economy = ?, d2_data_sovereignty = ?,
+                d3_power_consolidation = ?, d4_coercion_cooperation = ?,
+                d5_fear_trust = ?, d6_democratization = ?,
+                d7_systemic_design = ?,
+                composite_score = ?, relevance_tier = ?,
+                convergence_flag = ?, relevance_rationale = ?, scored_at = ?
+            WHERE id = ?
+        """, (
+            scores.get("d1_attention_economy", 0),
+            scores.get("d2_data_sovereignty", 0),
+            scores.get("d3_power_consolidation", 0),
+            scores.get("d4_coercion_cooperation", 0),
+            scores.get("d5_fear_trust", 0),
+            scores.get("d6_democratization", 0),
+            scores.get("d7_systemic_design", 0),
+            composite, tier, convergence, rationale,
+            datetime.utcnow().isoformat(), article_id,
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_scored_count():
+    """Get number of articles with relevance scores."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM articles WHERE scored_at IS NOT NULL")
+        return cursor.fetchone()[0]
+
+
+def get_score_distribution():
+    """Get all scoring data for distribution analysis.
+
+    Returns dict with:
+        - composite_scores: list of all composite scores
+        - dimension_scores: dict of dimension_name -> list of scores
+        - convergence_count: number of articles with convergence flag
+        - total: total scored articles
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT composite_score, convergence_flag,
+                   d1_attention_economy, d2_data_sovereignty,
+                   d3_power_consolidation, d4_coercion_cooperation,
+                   d5_fear_trust, d6_democratization, d7_systemic_design
+            FROM articles
+            WHERE scored_at IS NOT NULL
+            ORDER BY composite_score DESC
+        """)
+
+        rows = [dict(row) for row in cursor.fetchall()]
+
+        composites = [r["composite_score"] for r in rows]
+        convergence = sum(1 for r in rows if r["convergence_flag"])
+
+        dims = {}
+        for key in [
+            "d1_attention_economy", "d2_data_sovereignty",
+            "d3_power_consolidation", "d4_coercion_cooperation",
+            "d5_fear_trust", "d6_democratization", "d7_systemic_design",
+        ]:
+            dims[key] = [r[key] for r in rows if r[key] is not None]
+
+        return {
+            "composite_scores": composites,
+            "dimension_scores": dims,
+            "convergence_count": convergence,
+            "total": len(rows),
+        }
 
 
 def update_embedding(article_id, embedding_blob):

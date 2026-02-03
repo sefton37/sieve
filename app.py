@@ -19,6 +19,8 @@ from db import (
     get_embedded_count,
     get_keywords,
     get_recent_digests,
+    get_score_distribution,
+    get_scored_count,
     get_sources,
     get_summarized_count,
     init_db,
@@ -51,7 +53,7 @@ app = Flask(__name__)
 # Job state tracking (in-memory, single user)
 job_state = {
     "running": False,
-    "type": None,  # "ingest", "summarize", "pipeline", "embed", "digest", or "chat"
+    "type": None,  # "ingest", "summarize", "pipeline", "embed", "score", "digest", or "chat"
     "stage": None,  # For pipeline: "ingest", "compress", "summarize", "embed"
     "current": 0,
     "total": 0,
@@ -204,6 +206,38 @@ def run_embed_job():
             job_state["running"] = False
 
 
+def run_score_job():
+    """Run batch relevance scoring in background thread."""
+    global job_state
+    from score import score_batch
+
+    def on_progress(current, total):
+        with job_lock:
+            job_state["current"] = current
+            job_state["total"] = total
+
+    try:
+        with job_lock:
+            job_state["running"] = True
+            job_state["type"] = "score"
+            job_state["current"] = 0
+            job_state["total"] = 0
+            job_state["error"] = None
+
+        result = score_batch(on_progress=on_progress)
+
+        with job_lock:
+            job_state["result"] = result
+
+    except Exception as e:
+        logger.error(f"Score job failed: {e}")
+        with job_lock:
+            job_state["error"] = str(e)
+    finally:
+        with job_lock:
+            job_state["running"] = False
+
+
 def run_digest_job():
     """Run digest generation in background thread."""
     global job_state
@@ -245,6 +279,8 @@ def index():
     date_to = request.args.get("date_to", "")
     search = request.args.get("search", "")
     keyword = request.args.get("keyword", "")
+    tier = request.args.get("tier", "")
+    sort = request.args.get("sort", "date_desc")
     page = request.args.get("page", 1, type=int)
     per_page = 20
 
@@ -264,8 +300,13 @@ def index():
         filters["search"] = search
     if keyword:
         filters["keyword"] = keyword
+    if tier:
+        try:
+            filters["tier"] = int(tier)
+        except ValueError:
+            pass
 
-    articles, total = get_articles(filters=filters, page=page, per_page=per_page)
+    articles, total = get_articles(filters=filters, page=page, per_page=per_page, sort=sort)
     total_pages = ceil(total / per_page) if total > 0 else 1
     sources = get_sources()
     keywords = get_keywords()
@@ -274,36 +315,30 @@ def index():
     article_count = get_article_count()
     summarized_count = get_summarized_count()
 
-    # Check if this is an HTMX request for just the article list
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "partials/article_list.html",
-            articles=articles,
-            page=page,
-            total_pages=total_pages,
-            total=total,
-            source=source,
-            has_summary=has_summary,
-            date_from=date_from,
-            date_to=date_to,
-            search=search,
-            keyword=keyword,
-        )
-
-    return render_template(
-        "index.html",
+    template_vars = dict(
         articles=articles,
         page=page,
         total_pages=total_pages,
         total=total,
-        sources=sources,
-        keywords=keywords,
         source=source,
         has_summary=has_summary,
         date_from=date_from,
         date_to=date_to,
         search=search,
         keyword=keyword,
+        tier=tier,
+        sort=sort,
+    )
+
+    # Check if this is an HTMX request for just the article list
+    if request.headers.get("HX-Request"):
+        return render_template("partials/article_list.html", **template_vars)
+
+    return render_template(
+        "index.html",
+        **template_vars,
+        sources=sources,
+        keywords=keywords,
         article_count=article_count,
         summarized_count=summarized_count,
     )
@@ -389,11 +424,13 @@ def stats():
     article_count = get_article_count()
     summarized_count = get_summarized_count()
     embedded_count = get_embedded_count()
+    scored_count = get_scored_count()
     return render_template(
         "partials/stats.html",
         article_count=article_count,
         summarized_count=summarized_count,
         embedded_count=embedded_count,
+        scored_count=scored_count,
     )
 
 
@@ -530,6 +567,104 @@ def trigger_embed():
         })
 
     return jsonify({"status": "started", "type": "embed"})
+
+
+@app.route("/scores")
+def scores_page():
+    """Score distribution dashboard."""
+    import math
+
+    data = get_score_distribution()
+    total_scored = data["total"]
+    total_articles = get_article_count()
+    composites = data["composite_scores"]
+
+    # Composite histogram: count per score value (0-21)
+    composite_counts = [0] * 22
+    for s in composites:
+        if 0 <= s <= 21:
+            composite_counts[s] += 1
+    composite_dist = list(enumerate(composite_counts))
+    max_composite_count = max(composite_counts) if composite_counts else 0
+
+    # Statistics
+    if composites:
+        composite_mean = sum(composites) / len(composites)
+        sorted_c = sorted(composites)
+        mid = len(sorted_c) // 2
+        composite_median = sorted_c[mid] if len(sorted_c) % 2 else (sorted_c[mid - 1] + sorted_c[mid]) / 2
+        variance = sum((x - composite_mean) ** 2 for x in composites) / len(composites)
+        composite_stddev = math.sqrt(variance)
+    else:
+        composite_mean = composite_median = composite_stddev = 0
+
+    # Tier distribution
+    tier_defs = [
+        {"tier": 1, "label": "15-21 (Critical)", "min": 15, "max": 21, "color": "#d32f2f"},
+        {"tier": 2, "label": "10-14 (High)", "min": 10, "max": 14, "color": "#f57c00"},
+        {"tier": 3, "label": "5-9 (Notable)", "min": 5, "max": 9, "color": "#fbc02d"},
+        {"tier": 4, "label": "1-4 (Peripheral)", "min": 1, "max": 4, "color": "#7cb342"},
+        {"tier": 5, "label": "0 (Skip)", "min": 0, "max": 0, "color": "#9e9e9e"},
+    ]
+    tier_dist = []
+    for td in tier_defs:
+        count = sum(1 for s in composites if td["min"] <= s <= td["max"])
+        pct = (count / total_scored * 100) if total_scored else 0
+        tier_dist.append({**td, "count": count, "pct": pct})
+
+    # Per-dimension averages
+    dim_labels = {
+        "d1_attention_economy": "D1: Attention Economy",
+        "d2_data_sovereignty": "D2: Data Sovereignty",
+        "d3_power_consolidation": "D3: Power Consolidation",
+        "d4_coercion_cooperation": "D4: Coercion vs Cooperation",
+        "d5_fear_trust": "D5: Fear vs Trust",
+        "d6_democratization": "D6: Democratization",
+        "d7_systemic_design": "D7: Systemic Design",
+    }
+    dimension_avgs = []
+    for key, label in dim_labels.items():
+        vals = data["dimension_scores"].get(key, [])
+        avg = sum(vals) / len(vals) if vals else 0
+        dimension_avgs.append({"key": key, "label": label, "avg": avg})
+
+    # Convergence
+    convergence_count = data["convergence_count"]
+    convergence_pct = (convergence_count / total_scored * 100) if total_scored else 0
+
+    return render_template(
+        "scores.html",
+        total_scored=total_scored,
+        total_articles=total_articles,
+        composite_dist=composite_dist,
+        max_composite_count=max_composite_count,
+        composite_mean=composite_mean,
+        composite_median=composite_median,
+        composite_stddev=composite_stddev,
+        tier_dist=tier_dist,
+        dimension_avgs=dimension_avgs,
+        convergence_count=convergence_count,
+        convergence_pct=convergence_pct,
+    )
+
+
+@app.route("/score", methods=["POST"])
+def trigger_score():
+    """Trigger batch relevance scoring job."""
+    with job_lock:
+        if job_state["running"]:
+            return jsonify({"error": "Another job is running"}), 409
+
+    thread = threading.Thread(target=run_score_job)
+    thread.daemon = True
+    thread.start()
+
+    if request.headers.get("HX-Request"):
+        return render_template("partials/job_status.html", job_state={
+            "running": True, "type": "score", "current": 0, "total": 0, "error": None, "result": None
+        })
+
+    return jsonify({"status": "started", "type": "score"})
 
 
 @app.route("/chat")

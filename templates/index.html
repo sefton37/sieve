@@ -42,6 +42,18 @@
                     <option value="no" {% if has_summary == 'no' %}selected{% endif %}>No Summary</option>
                 </select>
             </label>
+
+            <label>
+                Tier
+                <select name="tier">
+                    <option value="">All Tiers</option>
+                    <option value="1" {% if tier == '1' %}selected{% endif %}>T1 - Critical (15-21)</option>
+                    <option value="2" {% if tier == '2' %}selected{% endif %}>T2 - High (10-14)</option>
+                    <option value="3" {% if tier == '3' %}selected{% endif %}>T3 - Notable (5-9)</option>
+                    <option value="4" {% if tier == '4' %}selected{% endif %}>T4 - Peripheral (1-4)</option>
+                    <option value="5" {% if tier == '5' %}selected{% endif %}>T5 - Skip (0)</option>
+                </select>
+            </label>
         </div>
 
         <div class="grid">
@@ -58,6 +70,16 @@
             <label>
                 To Date
                 <input type="date" name="date_to" value="{{ date_to }}">
+            </label>
+
+            <label>
+                Sort By
+                <select name="sort">
+                    <option value="date_desc" {% if sort == 'date_desc' %}selected{% endif %}>Date (Newest)</option>
+                    <option value="date_asc" {% if sort == 'date_asc' %}selected{% endif %}>Date (Oldest)</option>
+                    <option value="score_desc" {% if sort == 'score_desc' %}selected{% endif %}>Score (Highest)</option>
+                    <option value="score_asc" {% if sort == 'score_asc' %}selected{% endif %}>Score (Lowest)</option>
+                </select>
             </label>
         </div>
 

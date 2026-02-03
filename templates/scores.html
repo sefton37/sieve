@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Score Distribution - Sieve{% endblock %}
+
+{% block content %}
+<h1>Score Distribution</h1>
+<p>Relevance scores across {{ total_scored }} scored articles ({{ total_articles }} total).</p>
+
+{% if total_scored == 0 %}
+<article>
+    <p>No articles have been scored yet. Run the scoring pipeline from <a href="{{ url_for('settings_page') }}">Settings</a>.</p>
+</article>
+{% else %}
+
+<!-- Composite Score Histogram -->
+<section>
+    <h2>Composite Score Distribution (0-21)</h2>
+    <div class="histogram">
+        {% for score, count in composite_dist %}
+        <div class="histogram-bar-wrapper">
+            <div class="histogram-bar" style="height: {{ (count / max_composite_count * 200) if max_composite_count > 0 else 0 }}px;" title="Score {{ score }}: {{ count }} articles">
+                {% if count > 0 %}<span class="bar-count">{{ count }}</span>{% endif %}
+            </div>
+            <span class="bar-label">{{ score }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <p><small>Mean: <strong>{{ "%.1f"|format(composite_mean) }}</strong> | Median: <strong>{{ composite_median }}</strong> | Std Dev: <strong>{{ "%.1f"|format(composite_stddev) }}</strong></small></p>
+</section>
+
+<hr>
+
+<!-- Tier Distribution -->
+<section>
+    <h2>Tier Distribution</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Tier</th>
+                <th>Range</th>
+                <th>Count</th>
+                <th>Percentage</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tier_info in tier_dist %}
+            <tr>
+                <td><strong>T{{ tier_info.tier }}</strong></td>
+                <td>{{ tier_info.label }}</td>
+                <td>{{ tier_info.count }}</td>
+                <td>{{ "%.1f"|format(tier_info.pct) }}%</td>
+                <td>
+                    <div class="tier-bar" style="width: {{ tier_info.pct * 3 }}px; background: {{ tier_info.color }};"></div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<hr>
+
+<!-- Per-Dimension Averages -->
+<section>
+    <h2>Per-Dimension Averages (0-3 scale)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Average</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dim in dimension_avgs %}
+            <tr>
+                <td>{{ dim.label }}</td>
+                <td>{{ "%.2f"|format(dim.avg) }}</td>
+                <td>
+                    <div class="dim-bar" style="width: {{ dim.avg / 3 * 200 }}px;"></div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<hr>
+
+<!-- Convergence Stats -->
+<section>
+    <h2>Convergence</h2>
+    <p>
+        <strong>{{ convergence_count }}</strong> articles ({{ "%.1f"|format(convergence_pct) }}%) flagged as convergence points
+        (3+ dimensions scored 2 or higher).
+    </p>
+</section>
+
+{% endif %}
+{% endblock %}

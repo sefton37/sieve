@@ -6,6 +6,7 @@ from datetime import datetime
 from db import get_setting
 from embed import embed_batch
 from ingest import compress_jsonl, ingest_articles
+from score import score_batch
 from summarize import summarize_batch
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def run_pipeline(on_progress=None):
         "compress": None,
         "summarize": None,
         "embed": None,
+        "score": None,
         "error": None,
     }
 
@@ -50,7 +52,7 @@ def run_pipeline(on_progress=None):
 
     # Stage 1: Ingest new articles
     try:
-        logger.info("Stage 1/4: Ingesting new articles...")
+        logger.info("Stage 1/5: Ingesting new articles...")
         if on_progress:
             on_progress("ingest", 0, 1, "Ingesting articles from JSONL")
 
@@ -61,7 +63,7 @@ def run_pipeline(on_progress=None):
             on_progress("ingest", 1, 1, f"Ingested {ingest_result['inserted']} new articles")
 
         logger.info(
-            f"Stage 1/4 complete: {ingest_result['inserted']} inserted, "
+            f"Stage 1/5 complete: {ingest_result['inserted']} inserted, "
             f"{ingest_result['skipped']} skipped"
         )
 
@@ -75,7 +77,7 @@ def run_pipeline(on_progress=None):
 
     # Stage 2: Compress JSONL (remove duplicates)
     try:
-        logger.info("Stage 2/4: Compressing JSONL...")
+        logger.info("Stage 2/5: Compressing JSONL...")
         if on_progress:
             on_progress("compress", 0, 1, "Removing duplicates from JSONL")
 
@@ -86,7 +88,7 @@ def run_pipeline(on_progress=None):
             on_progress("compress", 1, 1, f"Removed {compress_result['removed_count']} duplicates")
 
         logger.info(
-            f"Stage 2/4 complete: {compress_result['removed_count']} duplicates removed"
+            f"Stage 2/5 complete: {compress_result['removed_count']} duplicates removed"
         )
 
     except Exception as e:
@@ -99,7 +101,7 @@ def run_pipeline(on_progress=None):
 
     # Stage 3: Summarize unsummarized articles
     try:
-        logger.info("Stage 3/4: Summarizing articles...")
+        logger.info("Stage 3/5: Summarizing articles...")
 
         def summarize_progress(current, total):
             if on_progress:
@@ -112,7 +114,7 @@ def run_pipeline(on_progress=None):
             logger.warning(f"Summarization stopped early: {summarize_result.get('last_error')}")
         else:
             logger.info(
-                f"Stage 3/4 complete: {summarize_result['summarized']} summarized, "
+                f"Stage 3/5 complete: {summarize_result['summarized']} summarized, "
                 f"{summarize_result['failed']} failed"
             )
 
@@ -126,7 +128,7 @@ def run_pipeline(on_progress=None):
 
     # Stage 4: Embed summarized articles
     try:
-        logger.info("Stage 4/4: Embedding articles...")
+        logger.info("Stage 4/5: Embedding articles...")
 
         def embed_progress(current, total):
             if on_progress:
@@ -139,7 +141,7 @@ def run_pipeline(on_progress=None):
             logger.warning(f"Embedding stopped early: {embed_result.get('last_error')}")
         else:
             logger.info(
-                f"Stage 4/4 complete: {embed_result['embedded']} embedded, "
+                f"Stage 4/5 complete: {embed_result['embedded']} embedded, "
                 f"{embed_result['failed']} failed"
             )
 
@@ -151,16 +153,45 @@ def run_pipeline(on_progress=None):
         result["finished_at"] = datetime.now().isoformat()
         return result
 
+    # Stage 5: Score articles for relevancy
+    try:
+        logger.info("Stage 5/5: Scoring articles...")
+
+        def score_progress(current, total):
+            if on_progress:
+                on_progress("score", current, total, f"Scoring {current}/{total}")
+
+        score_result = score_batch(on_progress=score_progress)
+        result["score"] = score_result
+
+        if score_result.get("stopped_early"):
+            logger.warning(f"Scoring stopped early: {score_result.get('last_error')}")
+        else:
+            logger.info(
+                f"Stage 5/5 complete: {score_result['scored']} scored, "
+                f"{score_result['failed']} failed"
+            )
+
+    except Exception as e:
+        error_msg = f"Scoring failed: {e}"
+        logger.error(error_msg)
+        result["success"] = False
+        result["error"] = error_msg
+        result["finished_at"] = datetime.now().isoformat()
+        return result
+
     # Pipeline complete
     result["finished_at"] = datetime.now().isoformat()
     elapsed = (datetime.now() - start_time).total_seconds()
 
+    scored_count = result['score']['scored'] if result['score'] else 0
     logger.info(
         f"=== Pipeline complete in {elapsed:.1f}s: "
         f"{result['ingest']['inserted']} ingested, "
         f"{result['compress']['removed_count']} deduped, "
         f"{result['summarize']['summarized']} summarized, "
-        f"{result['embed']['embedded']} embedded ==="
+        f"{result['embed']['embedded']} embedded, "
+        f"{scored_count} scored ==="
     )
 
     return result

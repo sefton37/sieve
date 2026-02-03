@@ -65,6 +65,15 @@
             >
                 Embed Only
             </button>
+
+            <button
+                hx-post="{{ url_for('trigger_score') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Score Only
+            </button>
         </div>
     </details>
 </section>

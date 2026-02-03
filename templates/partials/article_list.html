@@ -13,6 +13,10 @@
             <small>
                 {{ article.source }} &bull;
                 {{ article.pub_date|format_date }}
+                {% if article.composite_score is not none %}
+                &bull; <span class="score-badge tier-{{ article.relevance_tier }}">T{{ article.relevance_tier }} ({{ article.composite_score }}/21)</span>
+                {% if article.convergence_flag %}<span class="convergence-badge">C</span>{% endif %}
+                {% endif %}
             </small>
         </p>
         {% if article.summary %}
@@ -36,13 +40,13 @@
 {% if total_pages > 1 %}
 <nav class="pagination">
     {% if page > 1 %}
-    <a href="{{ url_for('index', page=page-1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword) }}">&laquo; Previous</a>
+    <a href="{{ url_for('index', page=page-1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, sort=sort) }}">&laquo; Previous</a>
     {% endif %}
 
     <span>Page {{ page }} of {{ total_pages }}</span>
 
     {% if page < total_pages %}
-    <a href="{{ url_for('index', page=page+1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword) }}">Next &raquo;</a>
+    <a href="{{ url_for('index', page=page+1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, sort=sort) }}">Next &raquo;</a>
     {% endif %}
 </nav>
 {% endif %}
