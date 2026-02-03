@@ -119,9 +119,9 @@ def compute_tier(composite: int) -> int:
 
 
 def compute_convergence(scores: dict) -> bool:
-    """True if 3+ dimensions scored 2 or higher."""
+    """True if 5+ dimensions scored 2 or higher."""
     high_dims = sum(1 for key in DIMENSION_KEYS if scores.get(key, 0) >= 2)
-    return high_dims >= 3
+    return high_dims >= 5
 
 
 def parse_score_response(text: str) -> tuple[dict | None, str | None]:

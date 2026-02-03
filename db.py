@@ -664,6 +664,30 @@ def get_articles_since(since_datetime):
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_articles_since_scored(since_datetime):
+    """Get articles published since a given datetime, with scoring data.
+
+    Returns articles ordered by composite_score DESC (highest first),
+    including all relevance scoring columns. Articles without scores
+    are included at the end (treated as unscored).
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, url, source, pub_date, summary, keywords, content,
+                   composite_score, relevance_tier, convergence_flag,
+                   d1_attention_economy, d2_data_sovereignty,
+                   d3_power_consolidation, d4_coercion_cooperation,
+                   d5_fear_trust, d6_democratization, d7_systemic_design,
+                   relevance_rationale
+            FROM articles
+            WHERE summary IS NOT NULL
+                AND pub_date >= ?
+            ORDER BY composite_score DESC NULLS LAST, pub_date DESC
+        """, (since_datetime.isoformat(),))
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def save_digest(digest_date, content, article_count):
     """Save a daily digest."""
     with get_db() as conn:

@@ -1,4 +1,4 @@
-"""Daily digest service for Sieve - Morning briefings in Abend voice."""
+"""Daily digest service for Sieve - Score-aware morning briefings in Abend voice."""
 
 import logging
 import re
@@ -6,95 +6,297 @@ from datetime import datetime, timedelta
 
 import requests
 
-from db import get_all_settings, get_articles_since, save_digest
+from db import get_all_settings, get_articles_since_scored, save_digest
 
 logger = logging.getLogger(__name__)
 
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 
-# Abend digest system prompt
+DIMENSION_LABELS = {
+    "d1_attention_economy": "Attention Economy",
+    "d2_data_sovereignty": "Data Sovereignty",
+    "d3_power_consolidation": "Power Consolidation",
+    "d4_coercion_cooperation": "Coercion vs Cooperation",
+    "d5_fear_trust": "Fear vs Trust",
+    "d6_democratization": "Democratization",
+    "d7_systemic_design": "Systemic Design",
+}
+
+DIMENSION_KEYS = list(DIMENSION_LABELS.keys())
+
+# Score-aware Abend digest system prompt.
+# {tier_summary} = article count per tier
+# {dimension_profile} = today's dimensional averages with elevated flags
+# {t1_articles} = Tier 1 articles (full detail)
+# {t2_articles} = Tier 2 articles (detailed)
+# {t3_articles} = Tier 3 articles (brief)
+# {t4_articles} = Tier 4 articles (titles only)
 ABEND_DIGEST_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy.
 
-Today's articles with excerpts:
-{summaries}
+Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Articles are grouped by priority tier. Convergence points (marked [CONVERGENCE]) have 3+ dimensions scoring 2+, indicating intersecting themes.
 
-Write a substantive daily briefing (1500-2500 words) that provides real analysis, not just summaries.
+**Today's intake:** {tier_summary}
 
-**For each major theme or story you cover:**
-- Write 5-8 sentences of analysis explaining significance, context, and implications
-- Include **direct quotes** from the article excerpts to support your points
-- Cite sources inline with markdown links: [Article Title](URL)
-- Connect to broader patterns and historical context where relevant
-- Identify what the coverage reveals about underlying incentives
+**Dimensional profile:**
+{dimension_profile}
 
-**Structure your briefing with these sections:**
+---
+
+## TIER 1 — CRITICAL (15-21): Deep analysis required
+{t1_articles}
+
+## TIER 2 — HIGH (10-14): Substantive coverage
+{t2_articles}
+
+## TIER 3 — NOTABLE (5-9): Brief mentions, pattern fuel
+{t3_articles}
+
+## TIER 4 — PERIPHERAL (1-4): Noted in passing
+{t4_articles}
+
+---
+
+Write a substantive daily briefing (1500-2500 words) that provides real analysis, not just summaries. Use the scoring data to guide your emphasis — articles with higher scores and convergence flags deserve deeper treatment.
+
+**For Tier 1 articles:**
+- Write 5-8 sentences of analysis per article
+- Reference which dimensions are driving the score (e.g., "This story sits at the intersection of power consolidation and fear-based compliance")
+- Include **direct quotes** from the article excerpts
+- Cite sources inline: [Article Title](URL)
+- Explain what the scoring reveals about underlying dynamics
+
+**For Tier 2 articles:**
+- Write 2-4 sentences of analysis per article
+- Note the primary dimensions at play
+- Include quotes where available
+
+**For Tier 3 articles:**
+- Mention briefly, grouping by theme where possible
+- Use these to support patterns identified in higher-tier articles
+
+**For Tier 4 articles:**
+- Only mention if they connect to a pattern from higher tiers
+
+**Structure your briefing:**
 
 ## The Big Picture
-One or two paragraphs synthesizing the day's most significant developments. What story would lead the front page if you were editing it?
+Synthesize the day's most significant developments. Lead with Tier 1 stories. Reference the dimensional profile — if a dimension is elevated today, call that out as a systemic signal.
 
 ## Deep Dives
-For the 3-5 most important stories, provide substantive analysis:
+For Tier 1 and top Tier 2 stories, provide substantive analysis:
 - What happened and why it matters
+- Which dimensions are at play and what that reveals
 - Key quotes from sources
 - What's being emphasized vs. downplayed
 - Connections to ongoing narratives
 
-## Patterns & Gaps
-- Recurring themes across outlets
+## Patterns & Signals
+- Recurring dimensions across today's articles (the dimensional profile tells you which themes dominate)
+- Tier 3 articles that reinforce patterns from Tier 1/2
+- Convergence points — stories where multiple dimensions intersect
 - Conspicuous absences (what's NOT being covered)
-- Gap scores: where stated intent diverges from actual optimization
 
 ## What Deserves Attention
-2-3 items worth the reader's time, with specific reasons why
+2-3 items worth the reader's time, with specific reasons why. Prioritize convergence points.
 
 **Formatting:**
 - Use markdown: **bold**, bullet points, headers (##)
-- CRITICAL: When referencing an article, ALWAYS include a hyperlink using this exact format: [Article Title](https://full-url-here)
-- Every story you discuss MUST have at least one clickable link to its source article
-- CRITICAL: Always attribute the source outlet by name. Say "according to TechCrunch", "as reported by TechDirt", "per Ars Technica", etc. The source name for each article is provided in the article data.
-- Include at least one direct quote per major story using > blockquote format
-- Write in first person, be specific and analytical
-
-Example of correct citation with source attribution:
-As reported by **TechCrunch**, [TikTok Outage Blamed on Oracle Data Center](https://example.com/article) details how the platform experienced...
-
-> "We have successfully restored TikTok back to normal," the company stated, per **TechCrunch**."""
+- CRITICAL: When referencing an article, ALWAYS include a hyperlink: [Article Title](https://full-url-here)
+- Every story you discuss MUST have at least one clickable link
+- CRITICAL: Always attribute the source outlet by name ("according to TechCrunch", "as reported by TechDirt", etc.)
+- Include at least one direct quote per Tier 1 story using > blockquote format
+- Write in first person, be specific and analytical"""
 
 
-def format_articles_for_digest(articles: list[dict], max_content_chars: int = 2000) -> str:
-    """Format articles with content excerpts for the digest prompt.
+def _format_dimension_scores(article: dict) -> str:
+    """Format an article's dimension scores as a compact string."""
+    parts = []
+    for key in DIMENSION_KEYS:
+        val = article.get(key)
+        if val is not None:
+            short = DIMENSION_LABELS[key].split()[0]  # First word as abbreviation
+            parts.append(f"{short}({val})")
+    return " ".join(parts)
 
-    Args:
-        articles: List of article dicts with title, url, source, summary, keywords, content
-        max_content_chars: Max characters of content to include per article
+
+def _format_t1_article(article: dict) -> str:
+    """Format a Tier 1 article with full detail for the digest prompt."""
+    title = article.get("title", "Untitled")
+    url = article.get("url", "")
+    source = article.get("source", "Unknown")
+    score = article.get("composite_score", "?")
+    convergence = article.get("convergence_flag", 0)
+    summary = article.get("summary", "No summary")
+    keywords = article.get("keywords", "")
+    rationale = article.get("relevance_rationale", "")
+    content = article.get("content", "")
+
+    # T1 gets generous content budget
+    max_chars = 3000
+    if content and len(content) > max_chars:
+        content = content[:max_chars] + "..."
+
+    conv_tag = " [CONVERGENCE]" if convergence else ""
+    dims = _format_dimension_scores(article)
+
+    return (
+        f'### "{title}" [{score}/21]{conv_tag}\n'
+        f"URL: {url}\n"
+        f"Source: {source}\n"
+        f"Dimensions: {dims}\n"
+        f"Scoring rationale: {rationale or 'N/A'}\n"
+        f"Keywords: {keywords or 'none'}\n"
+        f"Summary: {summary}\n"
+        f"\n**Article excerpt:**\n{content or 'No content available'}\n"
+        f"\n---\n"
+    )
+
+
+def _format_t2_article(article: dict) -> str:
+    """Format a Tier 2 article with summary and moderate content."""
+    title = article.get("title", "Untitled")
+    url = article.get("url", "")
+    source = article.get("source", "Unknown")
+    score = article.get("composite_score", "?")
+    convergence = article.get("convergence_flag", 0)
+    summary = article.get("summary", "No summary")
+    keywords = article.get("keywords", "")
+    content = article.get("content", "")
+
+    # T2 gets moderate content budget
+    max_chars = 1500
+    if content and len(content) > max_chars:
+        content = content[:max_chars] + "..."
+
+    conv_tag = " [CONVERGENCE]" if convergence else ""
+    dims = _format_dimension_scores(article)
+
+    return (
+        f'### "{title}" [{score}/21]{conv_tag}\n'
+        f"URL: {url}\n"
+        f"Source: {source}\n"
+        f"Dimensions: {dims}\n"
+        f"Keywords: {keywords or 'none'}\n"
+        f"Summary: {summary}\n"
+        f"\n**Article excerpt:**\n{content or 'No content available'}\n"
+        f"\n---\n"
+    )
+
+
+def _format_t3_article(article: dict) -> str:
+    """Format a Tier 3 article with summary and keywords only."""
+    title = article.get("title", "Untitled")
+    url = article.get("url", "")
+    source = article.get("source", "Unknown")
+    score = article.get("composite_score", "?")
+    convergence = article.get("convergence_flag", 0)
+    summary = article.get("summary", "No summary")
+    keywords = article.get("keywords", "")
+
+    conv_tag = " [CONVERGENCE]" if convergence else ""
+    dims = _format_dimension_scores(article)
+
+    return (
+        f'- **"{title}"** [{score}/21]{conv_tag} — {source}\n'
+        f"  Dimensions: {dims}\n"
+        f"  URL: {url}\n"
+        f"  Summary: {summary}\n"
+        f"  Keywords: {keywords or 'none'}\n"
+    )
+
+
+def _format_t4_article(article: dict) -> str:
+    """Format a Tier 4 article as a single line."""
+    title = article.get("title", "Untitled")
+    url = article.get("url", "")
+    source = article.get("source", "Unknown")
+    score = article.get("composite_score", "?")
+
+    return f'- "{title}" [{score}/21] — {source} — {url}\n'
+
+
+def compute_dimension_profile(articles: list[dict]) -> str:
+    """Compute today's dimensional averages and flag elevated dimensions.
+
+    Returns a formatted string showing average per dimension with
+    (elevated) flags for dimensions significantly above their mean.
     """
     if not articles:
-        return "No articles from the past 24 hours."
+        return "No scored articles available."
 
-    parts = []
+    # Collect scores per dimension
+    dim_totals = {k: [] for k in DIMENSION_KEYS}
     for article in articles:
-        title = article.get("title", "Untitled")
-        url = article.get("url", "")
-        source = article.get("source", "Unknown")
-        summary = article.get("summary", "No summary")
-        keywords = article.get("keywords", "")
-        content = article.get("content", "")
+        for key in DIMENSION_KEYS:
+            val = article.get(key)
+            if val is not None:
+                dim_totals[key].append(val)
 
-        # Truncate content to avoid exceeding context limits
-        if content and len(content) > max_content_chars:
-            content = content[:max_content_chars] + "..."
+    if not any(dim_totals.values()):
+        return "No scored articles available."
 
-        parts.append(
-            f"### \"{title}\"\n"
-            f"URL: {url}\n"
-            f"Source: {source}\n"
-            f"Keywords: {keywords or 'none'}\n"
-            f"Summary: {summary}\n"
-            f"\n**Article excerpt:**\n{content or 'No content available'}\n"
-            f"\n---\n"
-        )
+    # Compute averages
+    dim_avgs = {}
+    for key, vals in dim_totals.items():
+        dim_avgs[key] = sum(vals) / len(vals) if vals else 0
+
+    # Overall mean across all dimensions to detect elevated ones
+    all_avgs = list(dim_avgs.values())
+    overall_mean = sum(all_avgs) / len(all_avgs) if all_avgs else 0
+
+    # A dimension is "elevated" if it's 0.5+ above the overall mean
+    parts = []
+    for key in DIMENSION_KEYS:
+        avg = dim_avgs[key]
+        label = DIMENSION_LABELS[key]
+        flag = " **(elevated)**" if avg >= overall_mean + 0.5 else ""
+        parts.append(f"- {label}: {avg:.1f}/3{flag}")
 
     return "\n".join(parts)
+
+
+def format_articles_tiered(articles: list[dict]) -> dict:
+    """Format articles into tiered sections based on relevance scores.
+
+    Articles are grouped by tier with proportional detail:
+    - T1 (15-21): Full content + scores + rationale
+    - T2 (10-14): Summary + 1500 chars content + scores
+    - T3 (5-9): Summary + keywords + scores
+    - T4 (1-4): Title + score only
+    - T5 (0) and unscored: Excluded
+
+    Returns dict with keys: t1, t2, t3, t4 (formatted strings),
+    tier_counts, and included_articles (for link injection).
+    """
+    tiers = {1: [], 2: [], 3: [], 4: []}
+    included = []
+
+    for article in articles:
+        tier = article.get("relevance_tier")
+        score = article.get("composite_score")
+
+        # Skip T5 (score=0) and unscored articles
+        if tier is None or score is None or tier == 5:
+            continue
+
+        if tier in tiers:
+            tiers[tier].append(article)
+            included.append(article)
+
+    # Format each tier
+    t1_parts = [_format_t1_article(a) for a in tiers[1]]
+    t2_parts = [_format_t2_article(a) for a in tiers[2]]
+    t3_parts = [_format_t3_article(a) for a in tiers[3]]
+    t4_parts = [_format_t4_article(a) for a in tiers[4]]
+
+    return {
+        "t1": "\n".join(t1_parts) if t1_parts else "No Tier 1 articles today.\n",
+        "t2": "\n".join(t2_parts) if t2_parts else "No Tier 2 articles today.\n",
+        "t3": "\n".join(t3_parts) if t3_parts else "No Tier 3 articles today.\n",
+        "t4": "\n".join(t4_parts) if t4_parts else "No Tier 4 articles today.\n",
+        "tier_counts": {t: len(articles) for t, articles in tiers.items()},
+        "included_articles": included,
+    }
 
 
 def inject_article_links(content: str, articles: list[dict]) -> str:
@@ -181,12 +383,14 @@ def inject_article_links(content: str, articles: list[dict]) -> str:
 
 def generate_digest() -> dict:
     """
-    Generate today's daily digest.
+    Generate today's daily digest using score-aware article prioritization.
 
-    1. Get articles from last 24 hours
-    2. Build prompt with all summaries
-    3. Call Ollama with Abend digest prompt
-    4. Save to database
+    1. Get scored articles from last 24 hours (ordered by composite score)
+    2. Group by tier with proportional content budgets
+    3. Compute dimensional profile for the day
+    4. Build score-aware prompt with tiered article data
+    5. Call Ollama with Abend digest prompt
+    6. Post-process links and save to database
 
     Returns:
         dict with 'success', 'content', 'article_count', and optionally 'error'
@@ -201,37 +405,59 @@ def generate_digest() -> dict:
     settings = get_all_settings()
     model = settings.get("ollama_model", "llama3.2")
     temperature = float(settings.get("ollama_temperature", 0.3))
-    # Note: num_ctx will be calculated based on prompt size below
 
-    # Get articles from last 24 hours
+    # Get scored articles from last 24 hours
     yesterday = datetime.utcnow() - timedelta(hours=24)
-    articles = get_articles_since(yesterday)
+    articles = get_articles_since_scored(yesterday)
     result["article_count"] = len(articles)
 
     if not articles:
         result["content"] = "No articles from the past 24 hours. The silence itself is notable."
         result["success"] = True
-        # Still save this as today's digest
         today = datetime.utcnow().strftime("%Y-%m-%d")
         save_digest(today, result["content"], 0)
         return result
 
-    # Build the prompt with article excerpts
-    max_content = 2000 if len(articles) <= 30 else 1500 if len(articles) <= 50 else 1000
-    summaries = format_articles_for_digest(articles, max_content_chars=max_content)
-    prompt = ABEND_DIGEST_PROMPT.format(summaries=summaries)
+    # Build tiered article sections
+    tiered = format_articles_tiered(articles)
+    tier_counts = tiered["tier_counts"]
+    included = tiered["included_articles"]
+
+    # Build tier summary line
+    tier_summary = (
+        f"{len(articles)} articles total — "
+        f"{tier_counts.get(1, 0)} critical (T1), "
+        f"{tier_counts.get(2, 0)} high (T2), "
+        f"{tier_counts.get(3, 0)} notable (T3), "
+        f"{tier_counts.get(4, 0)} peripheral (T4), "
+        f"{len(articles) - len(included)} excluded (T5/unscored)"
+    )
+
+    # Compute dimensional profile
+    dimension_profile = compute_dimension_profile(articles)
+
+    # Build the full prompt
+    prompt = ABEND_DIGEST_PROMPT.format(
+        tier_summary=tier_summary,
+        dimension_profile=dimension_profile,
+        t1_articles=tiered["t1"],
+        t2_articles=tiered["t2"],
+        t3_articles=tiered["t3"],
+        t4_articles=tiered["t4"],
+    )
 
     # Calculate required context window
-    # Rule of thumb: ~4 chars per token, plus room for response (~3000 tokens for digest)
     prompt_tokens_estimate = len(prompt) // 4
-    response_tokens_buffer = 4000  # Room for substantive response
+    response_tokens_buffer = 4000
     min_ctx_needed = prompt_tokens_estimate + response_tokens_buffer
 
     # Round up to nearest 4096 and ensure minimum of 32768
     num_ctx = max(32768, ((min_ctx_needed // 4096) + 1) * 4096)
 
     logger.info(
-        f"Digest: {len(articles)} articles, ~{prompt_tokens_estimate} prompt tokens, "
+        f"Digest: {len(articles)} articles ({tier_counts.get(1, 0)} T1, "
+        f"{tier_counts.get(2, 0)} T2, {tier_counts.get(3, 0)} T3, "
+        f"{tier_counts.get(4, 0)} T4), ~{prompt_tokens_estimate} prompt tokens, "
         f"using num_ctx={num_ctx}"
     )
 
@@ -241,7 +467,7 @@ def generate_digest() -> dict:
             OLLAMA_GENERATE_URL,
             json={
                 "model": model,
-                "prompt": "Generate today's briefing based on the articles provided.",
+                "prompt": "Generate today's briefing based on the scored and tiered articles provided.",
                 "system": prompt,
                 "stream": False,
                 "options": {
@@ -266,7 +492,7 @@ def generate_digest() -> dict:
             return result
 
         # Post-process: ensure article titles are hyperlinked
-        content = inject_article_links(content, articles)
+        content = inject_article_links(content, included)
 
         result["content"] = content
         result["success"] = True
@@ -275,7 +501,8 @@ def generate_digest() -> dict:
         today = datetime.utcnow().strftime("%Y-%m-%d")
         save_digest(today, content, len(articles))
 
-        logger.info(f"Generated digest for {today} with {len(articles)} articles")
+        logger.info(f"Generated digest for {today} with {len(articles)} articles "
+                     f"({len(included)} included after tier filtering)")
         return result
 
     except requests.exceptions.ConnectionError:
