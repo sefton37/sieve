@@ -1,5 +1,6 @@
 """Daily digest service for Sieve - Score-aware morning briefings in Abend voice."""
 
+import json
 import logging
 import re
 from datetime import datetime, timedelta
@@ -566,7 +567,7 @@ def generate_digest() -> dict:
         f"using num_ctx={num_ctx}"
     )
 
-    # Generate the digest
+    # Generate the digest using streaming to avoid read timeouts on large contexts
     try:
         response = requests.post(
             OLLAMA_GENERATE_URL,
@@ -574,24 +575,31 @@ def generate_digest() -> dict:
                 "model": model,
                 "prompt": "Generate today's briefing based on the scored and tiered articles provided.",
                 "system": prompt,
-                "stream": False,
+                "stream": True,
                 "options": {
                     "num_ctx": num_ctx,
                     "temperature": temperature,
+                    "num_predict": 4096,
                 },
             },
-            timeout=600,  # 10 minutes for substantive digest generation
+            timeout=(30, 600),  # 30s connect, 600s between chunks
+            stream=True,
         )
         response.raise_for_status()
 
-        data = response.json()
+        content_parts = []
+        for line in response.iter_lines():
+            if line:
+                chunk = json.loads(line)
+                if "error" in chunk:
+                    logger.error(f"Ollama error: {chunk['error']}")
+                    result["error"] = chunk["error"]
+                    return result
+                content_parts.append(chunk.get("response", ""))
+                if chunk.get("done", False):
+                    break
 
-        if "error" in data:
-            logger.error(f"Ollama error: {data['error']}")
-            result["error"] = data["error"]
-            return result
-
-        content = data.get("response", "").strip()
+        content = "".join(content_parts).strip()
         if not content:
             result["error"] = "Model returned empty response"
             return result
