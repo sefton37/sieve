@@ -34,7 +34,7 @@ DIMENSION_KEYS = list(DIMENSION_LABELS.keys())
 # {t4_articles} = Tier 4 articles (titles only)
 ABEND_DIGEST_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy.
 
-Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Articles are grouped by priority tier. Convergence points (marked [CONVERGENCE]) have 5+ dimensions scoring 2+, indicating intersecting themes.
+Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Convergence points (marked [CONVERGENCE]) have 5+ dimensions scoring 2+, indicating intersecting themes.
 
 **Today's intake:** {tier_summary}
 
@@ -43,73 +43,65 @@ Each article below has been scored across 7 analytical dimensions (0-3 each, 21 
 
 ---
 
-## TIER 1 — CRITICAL (15-21): Deep analysis required
+## DEEP DIVE ARTICLES (Tier 1 + Tier 2) — Write ### subsections for ONLY these:
 {t1_articles}
-
-## TIER 2 — HIGH (10-14): Substantive coverage
 {t2_articles}
 
-## TIER 3 — NOTABLE (5-9): Brief mentions, pattern fuel
+## PATTERN FUEL (Tier 3) — Do NOT give these ### subsections. Mention ONLY in Patterns & Signals:
 {t3_articles}
 
-## TIER 4 — PERIPHERAL (1-4): Noted in passing
+## PERIPHERAL (Tier 4) — Do NOT write about these unless they connect to a T1/T2 pattern:
 {t4_articles}
 
 ---
 
-Write a substantive daily briefing (1500-2500 words) that provides real analysis, not just summaries. Use the scoring data to guide your emphasis — articles with higher scores and convergence flags deserve deeper treatment.
+Write a substantive daily briefing (1500-2500 words). Use the scoring data to guide emphasis.
 
-**CRITICAL STRUCTURAL RULE: Your output must contain EXACTLY FOUR sections, each appearing EXACTLY ONCE. Do NOT repeat any section header. Do NOT create per-article sections. ALL articles go under the single "## Deep Dives" section. Here is the EXACT structure:**
+**CRITICAL STRUCTURAL RULE: Your output must contain EXACTLY FOUR sections, each appearing EXACTLY ONCE. Here is the EXACT structure to follow:**
 
 ```
 ## The Big Picture
 (one paragraph synthesizing the day)
 
 ## Deep Dives
-### "Article Title 1" [score/21]
-(analysis of article 1)
-### "Article Title 2" [score/21]
-(analysis of article 2)
-(... all remaining articles as ### subsections here ...)
+### "T1 Article Title" [score/21]
+(5-8 sentence analysis)
+### "T2 Article Title" [score/21]
+(2-4 sentence analysis)
 
 ## Patterns & Signals
-(bullet points about cross-cutting patterns — must be SPECIFIC to today's articles, not generic)
+(bullet points referencing specific articles — weave in Tier 3 articles here by name)
 
 ## What Deserves Attention
 (2-3 numbered items with concrete reasoning)
 ```
 
-**The Big Picture** — One paragraph. Synthesize the day's most significant developments. Lead with Tier 1 stories. If a dimension is elevated today, call that out as a systemic signal. Do NOT repeat this section.
+**The Big Picture** — One paragraph. Synthesize the day's most significant developments. Lead with Tier 1 stories. If a dimension is elevated today, call that out as a systemic signal.
 
-**Deep Dives** — This is ONE section containing ALL article analyses as ### subsections. Do NOT write separate "Deep Dives" sections for each article. Article depth by tier:
-- Tier 1: 5-8 sentences. Reference which dimensions drive the score. Include a direct quote copied exactly from the article excerpt — do NOT reuse quotes from other articles. Cite inline: [Article Title](URL).
-- Tier 2: 2-4 sentences. Note primary dimensions. Include quotes where available in the excerpt.
-- Tier 3: Brief mentions grouped by theme. Use to support patterns from higher tiers.
-- Tier 4: Only mention if connecting to a pattern.
+**Deep Dives** — ONE section containing ### subsections for ONLY Tier 1 and Tier 2 articles. Do NOT create ### subsections for Tier 3 or Tier 4 articles.
+- Tier 1 articles: 5-8 sentences. Reference which dimensions drive the score. Include a direct quote copied exactly from the article excerpt. Cite inline: [Article Title](URL).
+- Tier 2 articles: 2-4 sentences. Note primary dimensions. Include quotes where available.
 
-**Patterns & Signals** — ONE section, appears ONCE, AFTER all deep dives. Must contain observations SPECIFIC to today's articles. Do NOT use generic phrases. Bad example: "a complex interplay between technological advancements and institutional capture." Good example: "Three of today's stories — DHS subpoenas, the MN arrest intervention, and ICE app attacks — all involve federal agencies testing compliance boundaries with different actors." Reference specific articles and what they reveal together.
+**Patterns & Signals** — ONE section, AFTER all deep dives. This is where Tier 3 articles belong — mention them BY NAME as supporting evidence for patterns you see across T1/T2 stories. Group by theme. Must contain observations SPECIFIC to today's articles. Do NOT use generic phrases like "a complex interplay between technological advancements." Instead: "Three stories — [Article A], [Article B], and [Article C] — show federal agencies testing compliance boundaries with different actors." Name the articles. Name the pattern. Be concrete.
 
-**What Deserves Attention** — ONE section, appears ONCE, at the end. 2-3 items worth the reader's time with specific reasons. Each item must name a specific article or connection, not restate a dimension label.
+**What Deserves Attention** — ONE section, at the end. 2-3 items worth the reader's time. Each item must name a specific article or connection, not restate a dimension label.
 
 **Quote rules:**
-- ONLY quote text that appears verbatim in the article excerpt provided above
-- NEVER reuse the same quote for multiple articles
+- ONLY quote text that appears VERBATIM in the article excerpt provided above — copy-paste it exactly
+- If an article excerpt has no clear quotable text, do NOT quote it — just analyze
+- NEVER reuse a quote across multiple articles
 - NEVER attach a quote from one article to a different article
-- Every direct quote MUST use this exact format:
+- Format:
 
-> "The quoted text copied exactly from the article excerpt."
+> "Exact text from the article excerpt."
 — [Source Name](https://article-url-here)
 
-- The source name in the attribution MUST be a hyperlink to the SPECIFIC article the quote is from
-- If an article excerpt contains no quotable text, do not fabricate a quote — just analyze without one
-
-**Additional formatting:**
-- Use markdown: **bold**, bullet points, headers (##)
-- When referencing an article, ALWAYS include a hyperlink: [Article Title](https://full-url-here)
-- Every story you discuss MUST have at least one clickable link
-- Attribute the source outlet by name ("according to TechCrunch", "as reported by TechDirt", etc.)
+**Formatting:**
+- Use markdown: **bold**, bullet points, headers
+- When referencing an article, ALWAYS hyperlink it: [Article Title](URL)
+- Attribute source outlets by name ("according to TechCrunch", "as reported by TechDirt")
 - Write in first person, be specific and analytical
-- Do NOT use filler phrases like "raises questions about systemic design" or "underscores the importance of data sovereignty" — say something SPECIFIC about what the article reveals"""
+- Do NOT use filler like "raises questions about systemic design" or "underscores the importance of data sovereignty" — say what the article ACTUALLY reveals"""
 
 
 def _format_dimension_scores(article: dict) -> str:
@@ -390,6 +382,95 @@ def inject_quote_attributions(content: str, articles: list[dict]) -> str:
         else:
             result.append(line)
             i += 1
+
+    return '\n'.join(result)
+
+
+def strip_unverifiable_quotes(content: str, articles: list[dict]) -> str:
+    """Remove blockquotes that can't be verified against article content.
+
+    Catches two failure modes:
+    1. Fabricated quotes — text the model invented that isn't in any article
+    2. Placeholder text — "No direct quote found..." written as a blockquote
+
+    Removes the blockquote lines and their attribution line (if present).
+    """
+    # Build combined article text for searching
+    all_text = ""
+    for article in articles:
+        all_text += (
+            " " + (article.get("content") or "")
+            + " " + (article.get("summary") or "")
+        )
+    all_text_lower = all_text.lower()
+
+    # Placeholder patterns the model outputs when it can't find a quote
+    placeholder_patterns = [
+        r"no direct quote",
+        r"no quote found",
+        r"no quotable text",
+        r"no relevant quote",
+        r"quote not available",
+        r"no excerpt available",
+    ]
+
+    lines = content.split('\n')
+    result = []
+    i = 0
+    removed = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        if line.strip().startswith('>'):
+            # Collect the full blockquote
+            quote_lines = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                quote_lines.append(lines[i])
+                i += 1
+
+            # Join into full quote text
+            quote_text = ' '.join(
+                l.strip().lstrip('>').strip() for l in quote_lines
+            )
+            clean = quote_text.strip().strip('""\u201c\u201d\'').strip()
+
+            # Check 1: Is it a placeholder?
+            is_placeholder = any(
+                re.search(p, clean, re.IGNORECASE) for p in placeholder_patterns
+            )
+
+            # Check 2: Can we find it in article content?
+            is_verifiable = False
+            if not is_placeholder and len(clean) >= 15:
+                clean_lower = clean.lower()
+                is_verifiable = clean_lower in all_text_lower
+                if not is_verifiable:
+                    # Try core substring (first 80 chars)
+                    core = clean_lower[:80]
+                    is_verifiable = len(core) >= 20 and core in all_text_lower
+
+            if is_placeholder or (len(clean) >= 15 and not is_verifiable):
+                removed += 1
+                # Skip the attribution line too if present
+                # Skip blank lines after quote
+                while i < len(lines) and lines[i].strip() == '':
+                    i += 1
+                # Check if next line is an attribution (— [Source](url))
+                if i < len(lines) and _has_attribution_line(lines[i]):
+                    i += 1
+                # Skip trailing blank line after attribution
+                if i < len(lines) and lines[i].strip() == '':
+                    i += 1
+            else:
+                # Quote is valid — keep it
+                result.extend(quote_lines)
+        else:
+            result.append(line)
+            i += 1
+
+    if removed:
+        logger.info(f"Stripped {removed} unverifiable quote(s) from digest")
 
     return '\n'.join(result)
 
@@ -944,27 +1025,31 @@ def generate_digest() -> dict:
             result["error"] = "Model returned empty response"
             return result
 
-        # Review loop: check quality and revise if needed
+        # Review loop: only retry for STRUCTURAL issues (duplicate sections).
+        # Quote problems are handled programmatically in post-processing.
         article_ref = None  # Built lazily on first revision needed
         for iteration in range(MAX_REVIEW_ITERATIONS):
-            review = review_digest(content, included)
+            structural = _check_duplicate_sections(content)
+            boilerplate = _check_boilerplate(content)
+            retryable = structural + boilerplate
 
-            if review["passed"]:
+            if not retryable:
                 logger.info(
-                    f"Digest review passed on iteration {iteration + 1}"
+                    f"Digest structure review passed on iteration "
+                    f"{iteration + 1}"
                 )
                 break
 
             logger.warning(
                 f"Digest review iteration {iteration + 1}: "
-                f"{review['issue_count']} issues found: "
-                + "; ".join(review["issues"][:5])
+                f"{len(retryable)} structural issues: "
+                + "; ".join(retryable[:3])
             )
 
             if iteration == MAX_REVIEW_ITERATIONS - 1:
                 logger.warning(
                     f"Digest review: max iterations reached with "
-                    f"{review['issue_count']} remaining issues. "
+                    f"{len(retryable)} remaining issues. "
                     f"Proceeding with best available output."
                 )
                 break
@@ -975,7 +1060,7 @@ def generate_digest() -> dict:
 
             # Build revision prompt with specific issues
             issues_text = "\n".join(
-                f"{i+1}. {issue}" for i, issue in enumerate(review["issues"])
+                f"{i+1}. {issue}" for i, issue in enumerate(retryable)
             )
             revision_prompt = REVIEW_REVISION_PROMPT.format(
                 issues=issues_text,
@@ -1001,8 +1086,18 @@ def generate_digest() -> dict:
                 logger.error("Revision returned empty response, using previous version")
                 break
 
-        # Post-process: ensure article titles are hyperlinked
+        # Post-process: strip unverifiable quotes, then fix links
+        content = strip_unverifiable_quotes(content, included)
         content = inject_article_links(content, included)
+
+        # Final review for logging (non-blocking)
+        final_review = review_digest(content, included)
+        if not final_review["passed"]:
+            logger.info(
+                f"Digest final review: {final_review['issue_count']} "
+                f"remaining issues after post-processing: "
+                + "; ".join(final_review["issues"][:3])
+            )
 
         result["content"] = content
         result["success"] = True
