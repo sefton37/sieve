@@ -547,7 +547,25 @@ def inject_article_links(content: str, articles: list[dict]) -> str:
         pattern = re.compile(r'\[' + escaped_title + r'\](?!\()')
         content = pattern.sub(f'[{title}]({url})', content)
 
-    # 5. Clean up any double-linked artifacts like [[Title](url)](url)
+    # 5. Fix quoted title mentions: **"Title"** or "Title" -> [Title](url)
+    #    Matches titles in bold+quotes, just quotes, or bold only — not already linked
+    for title, url in sorted(title_to_url.items(), key=lambda x: len(x[0]), reverse=True):
+        escaped_title = re.escape(title)
+        # **"Title"** -> [Title](url)
+        content = re.sub(
+            r'\*\*"' + escaped_title + r'"\*\*',
+            f'**[{title}]({url})**',
+            content,
+        )
+        # "Title" (in quotes, not already inside a markdown link)
+        # Only match if not preceded by [ or ( which would indicate already-linked
+        content = re.sub(
+            r'(?<!\[)(?<!\()"' + escaped_title + r'"',
+            f'[{title}]({url})',
+            content,
+        )
+
+    # 6. Clean up any double-linked artifacts like [[Title](url)](url)
     content = re.sub(r'\[(\[[^\]]+\]\([^)]+\))\]\([^)]+\)', r'\1', content)
 
     # 6. Append a sources section with all articles linked
@@ -1148,12 +1166,12 @@ def generate_digest() -> dict:
             synthesis = ""
 
         # --- Phase 3: Assemble final markdown ---
-        # Extract synthesis sections (should contain Big Picture, Patterns, Attention)
         # Build the Deep Dives section from individual analyses
+        # Headers include hyperlinks: ### "[Title](url)" [score/21]
         deep_dives = "## Deep Dives\n\n"
         for aa in article_analyses:
             deep_dives += (
-                f'### "{aa["title"]}" [{aa["score"]}/21]{aa["convergence"]}\n'
+                f'### [{aa["title"]}]({aa["url"]}) [{aa["score"]}/21]{aa["convergence"]}\n'
                 f'{aa["analysis"]}\n\n'
             )
 
