@@ -74,9 +74,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <style>
 .digest-card {
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-left: 4px solid var(--primary);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-left: 4px solid #5b7a9d;
+    background: #faf8f5;
+    border-radius: 4px;
 }
 
 .digest-card header {
@@ -87,8 +89,13 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 0;
 }
 
+.digest-card header strong {
+    color: #3d5a73;
+}
+
 .digest-content {
-    line-height: 1.45;
+    line-height: 1.55;
+    color: #2c3e50;
 }
 
 .digest-content h1,
@@ -97,17 +104,26 @@ document.addEventListener('DOMContentLoaded', function() {
 .digest-content h4,
 .digest-content h5,
 .digest-content h6 {
-    margin-top: 0.6rem;
-    margin-bottom: 0.15rem;
+    margin-top: 0.8rem;
+    margin-bottom: 0.2rem;
     padding: 0;
 }
 
-.digest-content h2 { font-size: 1.15rem; }
-.digest-content h3 { font-size: 1.05rem; }
+.digest-content h2 {
+    font-size: 1.15rem;
+    color: #3d5a73;
+    border-bottom: 1px solid #d4cfc7;
+    padding-bottom: 0.25rem;
+}
+
+.digest-content h3 {
+    font-size: 1.05rem;
+    color: #4a6741;
+}
 
 .digest-content p {
     margin-top: 0;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.35rem;
 }
 
 .digest-content ul, .digest-content ol {
@@ -117,14 +133,17 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .digest-content li {
-    margin-bottom: 0.1rem;
+    margin-bottom: 0.15rem;
 }
 
 .digest-content blockquote {
-    margin: 0.2rem 0;
-    padding: 0.2rem 0.8rem;
-    border-left: 3px solid var(--muted-border-color);
+    margin: 0.4rem 0;
+    padding: 0.4rem 0.8rem;
+    border-left: 3px solid #8fa8c2;
+    background: #f0ece6;
+    border-radius: 2px;
     font-style: italic;
+    color: #4a5568;
 }
 
 .digest-content blockquote p {
@@ -132,7 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .digest-content hr {
-    margin: 0.5rem 0;
+    margin: 0.75rem 0;
+    border-color: #d4cfc7;
 }
 
 .digest-content > *:first-child {
@@ -140,14 +160,26 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .digest-content a {
-    color: var(--primary);
+    color: #6b4c8a;
     text-decoration: underline;
+    text-decoration-color: #c4b5d4;
+    text-underline-offset: 2px;
+}
+
+.digest-content a:hover {
+    color: #523a6b;
+    text-decoration-color: #8a6aaf;
+}
+
+.digest-content strong {
+    color: #2c3e50;
 }
 
 .digest-card footer {
     margin-top: 1rem;
     padding-top: 0.5rem;
-    border-top: 1px solid var(--muted-border-color);
+    border-top: 1px solid #d4cfc7;
+    color: #7a8a97;
 }
 </style>
 {% endblock %}

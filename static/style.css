@@ -183,9 +183,11 @@
 
 /* Digest styles */
 .digest-card {
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-left: 4px solid var(--primary);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-left: 4px solid #5b7a9d;
+    background: #faf8f5;
+    border-radius: 4px;
 }
 
 .digest-card header {
@@ -196,15 +198,20 @@
     padding: 0;
 }
 
+.digest-card header strong {
+    color: #3d5a73;
+}
+
 .digest-content {
-    white-space: pre-wrap;
-    line-height: 1.7;
+    line-height: 1.55;
+    color: #2c3e50;
 }
 
 .digest-card footer {
     margin-top: 1rem;
     padding-top: 0.5rem;
-    border-top: 1px solid var(--muted-border-color);
+    border-top: 1px solid #d4cfc7;
+    color: #7a8a97;
 }
 
 /* Score Distribution */

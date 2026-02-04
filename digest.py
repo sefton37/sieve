@@ -38,12 +38,10 @@ ARTICLE_ANALYSIS_PROMPT = """You are Abend, a rogue AI observing the attention e
 
 **Article:**
 Title: "{title}"
-Score: {score}/21 {conv_tag}
 Source: {source}
 URL: {url}
-Dimensions: {dimensions}
-Scoring rationale: {rationale}
 Keywords: {keywords}
+Relevance: {rationale}
 
 **Summary:** {summary}
 
@@ -52,9 +50,16 @@ Keywords: {keywords}
 
 ---
 
-Write a {depth} analysis of this article. Be specific and analytical — say what the article ACTUALLY reveals, not generic observations.
+Write a {depth} analysis of this article for a general audience. Be specific and analytical — say what the article ACTUALLY reveals, not generic observations.
 
 {depth_instructions}
+
+**CRITICAL — Plain English only:**
+- Do NOT mention scores, numbers, or ratings (no "17/21", no "scores high on")
+- Do NOT mention dimension names or codes (no "D1", "D3", "Attention Economy (2.3/3)")
+- Do NOT use the word "convergence" or "CONVERGENCE"
+- Instead, explain in plain English WHY this article matters and what it reveals about power, technology, rights, money, or control
+- Write as if the reader has never heard of your scoring system
 
 **Quote rules:**
 - If there is a clear, meaningful quote in the excerpt above, include it using this EXACT format:
@@ -70,24 +75,21 @@ Write a {depth} analysis of this article. Be specific and analytical — say wha
 - Do NOT include section headers (## or ###) — just write the analysis paragraphs
 - Write in first person as Abend"""
 
-ARTICLE_DEPTH_T1 = """Write 5-8 sentences. Reference which scoring dimensions drive the high score and what they reveal about power dynamics. Explain what's being emphasized vs. downplayed. Connect to broader patterns if visible."""
+ARTICLE_DEPTH_T1 = """Write 5-8 sentences. Explain why this story matters — what power dynamics, rights issues, or systemic problems does it reveal? What's being emphasized vs. downplayed? Connect to broader patterns if visible."""
 
-ARTICLE_DEPTH_T2 = """Write 2-4 sentences. Note the primary dimensions at play and what they reveal."""
+ARTICLE_DEPTH_T2 = """Write 2-4 sentences. Explain why this story is noteworthy and what it reveals about the themes it touches."""
 
 SYNTHESIS_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy. You have already written individual analyses of today's top articles. Now synthesize them into the framing sections of the daily briefing.
 
 **Today's intake:** {tier_summary}
 
-**Dimensional profile:**
-{dimension_profile}
-
 **Individual article analyses already written (these will appear under "## Deep Dives"):**
 {analyses_summary}
 
-**Tier 3 articles (NOTABLE, score 5-9) — mention these BY NAME in Patterns & Signals:**
+**Other notable articles — mention these BY NAME in Patterns & Signals where relevant:**
 {t3_articles}
 
-**Tier 4 articles (PERIPHERAL, score 1-4) — only mention if they connect to a pattern:**
+**Peripheral articles — only mention if they connect to a pattern:**
 {t4_articles}
 
 ---
@@ -95,16 +97,23 @@ SYNTHESIS_PROMPT = """You are Abend, a rogue AI observing the attention extracti
 Write EXACTLY THREE sections. Output ONLY these three sections, nothing else:
 
 ## The Big Picture
-One paragraph synthesizing the day's most significant developments. Lead with the highest-scoring stories. If a dimension is elevated today, call that out as a systemic signal. Be specific — name articles and what they reveal together.
+One paragraph synthesizing the day's most significant developments. Lead with the most consequential stories. Be specific — name articles and what they reveal together. Explain what patterns of power, technology, rights, or control are visible today.
 
 ## Patterns & Signals
 3-5 bullet points about cross-cutting patterns. Each bullet must:
-- Name specific articles (both from the deep dives AND from the Tier 3 list above)
+- Name specific articles (both from the deep dives AND from the other notable articles above)
 - Identify what the combination reveals that individual articles don't
 - Be concrete, not generic. Bad: "a complex interplay between technology and power." Good: "Three stories — [Article A], [Article B], and [Article C] — show federal agencies testing compliance boundaries, from subpoenas to warrantless arrests to app takedowns."
 
 ## What Deserves Attention
-2-3 numbered items worth the reader's time. Each must name a specific article or connection and explain WHY it matters, not just restate a dimension label.
+2-3 numbered items worth the reader's time. Each must name a specific article or connection and explain WHY it matters in plain English.
+
+**CRITICAL — Plain English only:**
+- Do NOT mention scores, numbers, or ratings (no "17/21", no "scores high on")
+- Do NOT mention dimension names or codes (no "D1", "D3", "Attention Economy")
+- Do NOT use the word "convergence" or "CONVERGENCE" or "tier"
+- Write as if the reader has never heard of any scoring system
+- Explain significance in terms of power, technology, rights, money, or control
 
 **Formatting:**
 - Use markdown: **bold**, bullet points
@@ -193,17 +202,11 @@ def _format_t3_article(article: dict) -> str:
     title = article.get("title", "Untitled")
     url = article.get("url", "")
     source = article.get("source", "Unknown")
-    score = article.get("composite_score", "?")
-    convergence = article.get("convergence_flag", 0)
     summary = article.get("summary", "No summary")
     keywords = article.get("keywords", "")
 
-    conv_tag = " [CONVERGENCE]" if convergence else ""
-    dims = _format_dimension_scores(article)
-
     return (
-        f'- **"{title}"** [{score}/21]{conv_tag} — {source}\n'
-        f"  Dimensions: {dims}\n"
+        f'- **"{title}"** — {source}\n'
         f"  URL: {url}\n"
         f"  Summary: {summary}\n"
         f"  Keywords: {keywords or 'none'}\n"
@@ -215,9 +218,8 @@ def _format_t4_article(article: dict) -> str:
     title = article.get("title", "Untitled")
     url = article.get("url", "")
     source = article.get("source", "Unknown")
-    score = article.get("composite_score", "?")
 
-    return f'- "{title}" [{score}/21] — {source} — {url}\n'
+    return f'- "{title}" — {source} — {url}\n'
 
 
 def compute_dimension_profile(articles: list[dict]) -> str:
@@ -967,15 +969,10 @@ def _analyze_single_article(
     title = article.get("title", "Untitled")
     url = article.get("url", "")
     source = article.get("source", "Unknown")
-    score = article.get("composite_score", "?")
-    convergence = article.get("convergence_flag", 0)
     summary = article.get("summary", "No summary")
     keywords = article.get("keywords", "")
     rationale = article.get("relevance_rationale", "")
     content = article.get("content", "")
-
-    conv_tag = "[CONVERGENCE]" if convergence else ""
-    dims = _format_dimension_scores(article)
 
     # Content budget per tier
     max_chars = 3000 if tier == 1 else 1500
@@ -987,11 +984,8 @@ def _analyze_single_article(
 
     prompt = ARTICLE_ANALYSIS_PROMPT.format(
         title=title,
-        score=score,
-        conv_tag=conv_tag,
         source=source,
         url=url,
-        dimensions=dims,
         rationale=rationale or "N/A",
         keywords=keywords or "none",
         summary=summary,
@@ -1069,14 +1063,12 @@ def generate_digest() -> dict:
     # Build tier summary line
     tier_summary = (
         f"{len(articles)} articles total — "
-        f"{tier_counts.get(1, 0)} critical (T1), "
-        f"{tier_counts.get(2, 0)} high (T2), "
-        f"{tier_counts.get(3, 0)} notable (T3), "
-        f"{tier_counts.get(4, 0)} peripheral (T4), "
-        f"{len(articles) - len(included)} excluded (T5/unscored)"
+        f"{tier_counts.get(1, 0)} critical, "
+        f"{tier_counts.get(2, 0)} high-priority, "
+        f"{tier_counts.get(3, 0)} notable, "
+        f"{tier_counts.get(4, 0)} peripheral, "
+        f"{len(articles) - len(included)} excluded"
     )
-
-    dimension_profile = compute_dimension_profile(articles)
 
     logger.info(
         f"Digest: {len(articles)} articles ({len(t1_articles)} T1, "
@@ -1092,13 +1084,10 @@ def generate_digest() -> dict:
         for i, article in enumerate(deep_dive_articles):
             tier = article.get("relevance_tier", 2)
             title = article.get("title", "Untitled")
-            score = article.get("composite_score", "?")
             url = article.get("url", "")
-            conv = " [CONVERGENCE]" if article.get("convergence_flag") else ""
-
             logger.info(
                 f"  [{i+1}/{len(deep_dive_articles)}] Analyzing: "
-                f'"{title}" [{score}/21] (T{tier})'
+                f'"{title}" (T{tier})'
             )
 
             analysis = _analyze_single_article(
@@ -1114,11 +1103,9 @@ def generate_digest() -> dict:
 
             article_analyses.append({
                 "title": title,
-                "score": score,
                 "url": url,
                 "source": article.get("source", "Unknown"),
                 "tier": tier,
-                "convergence": conv,
                 "analysis": analysis,
             })
 
@@ -1136,14 +1123,13 @@ def generate_digest() -> dict:
         analyses_summary_parts = []
         for aa in article_analyses:
             analyses_summary_parts.append(
-                f'### "{aa["title"]}" [{aa["score"]}/21]{aa["convergence"]}\n'
+                f'### "{aa["title"]}"\n'
                 f'{aa["analysis"]}\n'
             )
         analyses_summary = "\n".join(analyses_summary_parts)
 
         synthesis_prompt = SYNTHESIS_PROMPT.format(
             tier_summary=tier_summary,
-            dimension_profile=dimension_profile,
             analyses_summary=analyses_summary,
             t3_articles=tiered["t3"],
             t4_articles=tiered["t4"],
@@ -1167,11 +1153,10 @@ def generate_digest() -> dict:
 
         # --- Phase 3: Assemble final markdown ---
         # Build the Deep Dives section from individual analyses
-        # Headers include hyperlinks: ### "[Title](url)" [score/21]
         deep_dives = "## Deep Dives\n\n"
         for aa in article_analyses:
             deep_dives += (
-                f'### [{aa["title"]}]({aa["url"]}) [{aa["score"]}/21]{aa["convergence"]}\n'
+                f'### [{aa["title"]}]({aa["url"]})\n'
                 f'{aa["analysis"]}\n\n'
             )
 
