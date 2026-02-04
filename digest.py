@@ -59,64 +59,57 @@ Each article below has been scored across 7 analytical dimensions (0-3 each, 21 
 
 Write a substantive daily briefing (1500-2500 words) that provides real analysis, not just summaries. Use the scoring data to guide your emphasis — articles with higher scores and convergence flags deserve deeper treatment.
 
-**For Tier 1 articles:**
-- Write 5-8 sentences of analysis per article
-- Reference which dimensions are driving the score (e.g., "This story sits at the intersection of power consolidation and fear-based compliance")
-- Include **direct quotes** from the article excerpts
-- Cite sources inline: [Article Title](URL)
-- Explain what the scoring reveals about underlying dynamics
+**CRITICAL STRUCTURAL RULE: Your output must contain EXACTLY FOUR sections, each appearing EXACTLY ONCE. Do NOT repeat any section header. Do NOT create per-article sections. ALL articles go under the single "## Deep Dives" section. Here is the EXACT structure:**
 
-**For Tier 2 articles:**
-- Write 2-4 sentences of analysis per article
-- Note the primary dimensions at play
-- Include quotes where available
-
-**For Tier 3 articles:**
-- Mention briefly, grouping by theme where possible
-- Use these to support patterns identified in higher-tier articles
-
-**For Tier 4 articles:**
-- Only mention if they connect to a pattern from higher tiers
-
-**Structure your briefing:**
-
+```
 ## The Big Picture
-Synthesize the day's most significant developments. Lead with Tier 1 stories. Reference the dimensional profile — if a dimension is elevated today, call that out as a systemic signal.
+(one paragraph synthesizing the day)
 
 ## Deep Dives
-For Tier 1 and top Tier 2 stories, provide substantive analysis:
-- What happened and why it matters
-- Which dimensions are at play and what that reveals
-- Key quotes from sources
-- What's being emphasized vs. downplayed
-- Connections to ongoing narratives
+### "Article Title 1" [score/21]
+(analysis of article 1)
+### "Article Title 2" [score/21]
+(analysis of article 2)
+(... all remaining articles as ### subsections here ...)
 
 ## Patterns & Signals
-- Recurring dimensions across today's articles (the dimensional profile tells you which themes dominate)
-- Tier 3 articles that reinforce patterns from Tier 1/2
-- Convergence points — stories where multiple dimensions intersect
-- Conspicuous absences (what's NOT being covered)
+(bullet points about cross-cutting patterns — must be SPECIFIC to today's articles, not generic)
 
 ## What Deserves Attention
-2-3 items worth the reader's time, with specific reasons why. Prioritize convergence points.
+(2-3 numbered items with concrete reasoning)
+```
 
-**Formatting:**
-- Use markdown: **bold**, bullet points, headers (##)
-- CRITICAL: When referencing an article, ALWAYS include a hyperlink: [Article Title](https://full-url-here)
-- Every story you discuss MUST have at least one clickable link
-- CRITICAL: Always attribute the source outlet by name ("according to TechCrunch", "as reported by TechDirt", etc.)
-- Include at least one direct quote per Tier 1 story
-- CRITICAL: Every direct quote MUST use this exact format — a blockquote followed by an attribution line linking the source name to the article URL:
+**The Big Picture** — One paragraph. Synthesize the day's most significant developments. Lead with Tier 1 stories. If a dimension is elevated today, call that out as a systemic signal. Do NOT repeat this section.
 
-> "The quoted text from the article goes here."
+**Deep Dives** — This is ONE section containing ALL article analyses as ### subsections. Do NOT write separate "Deep Dives" sections for each article. Article depth by tier:
+- Tier 1: 5-8 sentences. Reference which dimensions drive the score. Include a direct quote copied exactly from the article excerpt — do NOT reuse quotes from other articles. Cite inline: [Article Title](URL).
+- Tier 2: 2-4 sentences. Note primary dimensions. Include quotes where available in the excerpt.
+- Tier 3: Brief mentions grouped by theme. Use to support patterns from higher tiers.
+- Tier 4: Only mention if connecting to a pattern.
+
+**Patterns & Signals** — ONE section, appears ONCE, AFTER all deep dives. Must contain observations SPECIFIC to today's articles. Do NOT use generic phrases. Bad example: "a complex interplay between technological advancements and institutional capture." Good example: "Three of today's stories — DHS subpoenas, the MN arrest intervention, and ICE app attacks — all involve federal agencies testing compliance boundaries with different actors." Reference specific articles and what they reveal together.
+
+**What Deserves Attention** — ONE section, appears ONCE, at the end. 2-3 items worth the reader's time with specific reasons. Each item must name a specific article or connection, not restate a dimension label.
+
+**Quote rules:**
+- ONLY quote text that appears verbatim in the article excerpt provided above
+- NEVER reuse the same quote for multiple articles
+- NEVER attach a quote from one article to a different article
+- Every direct quote MUST use this exact format:
+
+> "The quoted text copied exactly from the article excerpt."
 — [Source Name](https://article-url-here)
 
-  For example:
-> "Trump's going to win the election he lost, no matter what he has to do."
-— [Tech Dirt](https://www.techdirt.com/2026/01/29/example-article/)
+- The source name in the attribution MUST be a hyperlink to the SPECIFIC article the quote is from
+- If an article excerpt contains no quotable text, do not fabricate a quote — just analyze without one
 
-  NEVER put a quote without this attribution format. The source name in the attribution MUST be a hyperlink to the specific article the quote is from.
-- Write in first person, be specific and analytical"""
+**Additional formatting:**
+- Use markdown: **bold**, bullet points, headers (##)
+- When referencing an article, ALWAYS include a hyperlink: [Article Title](https://full-url-here)
+- Every story you discuss MUST have at least one clickable link
+- Attribute the source outlet by name ("according to TechCrunch", "as reported by TechDirt", etc.)
+- Write in first person, be specific and analytical
+- Do NOT use filler phrases like "raises questions about systemic design" or "underscores the importance of data sovereignty" — say something SPECIFIC about what the article reveals"""
 
 
 def _format_dimension_scores(article: dict) -> str:
@@ -487,6 +480,374 @@ def inject_article_links(content: str, articles: list[dict]) -> str:
     return content
 
 
+REVIEW_REVISION_PROMPT = """You are Abend. You previously wrote a daily briefing, but a reviewer found problems. Fix ONLY the specific issues listed below. Keep everything else exactly as-is.
+
+**ISSUES FOUND:**
+{issues}
+
+**YOUR PREVIOUS BRIEFING:**
+{content}
+
+**ORIGINAL ARTICLE DATA (for verifying quotes):**
+{article_data}
+
+**RULES FOR REVISION:**
+1. Fix ONLY the issues listed above — do not rewrite sections that are fine
+2. Maintain the EXACT same structure: ## The Big Picture, ## Deep Dives, ## Patterns & Signals, ## What Deserves Attention — each appearing EXACTLY ONCE
+3. Quotes must be copied verbatim from the article excerpts — do not invent quotes
+4. Every quote must be attributed to the article it actually came from
+5. If you cannot find a real quote for an article, remove the quote and analyze without one
+6. Patterns & Signals must make specific observations about today's articles, not generic statements
+7. Do not add new sections or duplicate existing ones
+
+Write the corrected briefing now."""
+
+
+def _check_duplicate_sections(content: str) -> list[str]:
+    """Check for section headers that appear more than once."""
+    issues = []
+    expected_singles = [
+        "## The Big Picture",
+        "## Deep Dives",
+        "## Patterns & Signals",
+        "## What Deserves Attention",
+    ]
+    for header in expected_singles:
+        # Count occurrences (case-insensitive, flexible whitespace)
+        pattern = re.compile(
+            r'^' + re.escape(header), re.MULTILINE | re.IGNORECASE
+        )
+        matches = pattern.findall(content)
+        if len(matches) > 1:
+            issues.append(
+                f"DUPLICATE SECTION: '{header}' appears {len(matches)} times "
+                f"— it must appear exactly once. Consolidate all content under "
+                f"a single '{header}' section."
+            )
+        elif len(matches) == 0:
+            issues.append(
+                f"MISSING SECTION: '{header}' is missing from the briefing. "
+                f"Add this section."
+            )
+    return issues
+
+
+def _extract_quote_blocks(content: str) -> list[dict]:
+    """Extract all blockquote blocks from content, handling multiline quotes.
+
+    Returns a list of dicts with:
+        'text': the full quote text (all > lines joined)
+        'end_pos': position in content after the quote block
+        'attr_source': attribution source name (if found)
+        'attr_url': attribution URL (if found)
+    """
+    lines = content.split('\n')
+    blocks = []
+    i = 0
+    pos = 0  # track character position
+
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith('>'):
+            # Collect consecutive blockquote lines
+            quote_parts = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                text = lines[i].strip().lstrip('>').strip()
+                if text:
+                    quote_parts.append(text)
+                pos += len(lines[i]) + 1
+                i += 1
+
+            full_quote = ' '.join(quote_parts)
+            # Strip surrounding quotes
+            full_quote = full_quote.strip().strip('""\u201c\u201d\'').strip()
+
+            # Look for attribution on next non-empty line
+            attr_source = None
+            attr_url = None
+            j = i
+            while j < len(lines) and lines[j].strip() == '':
+                j += 1
+            if j < len(lines):
+                attr_match = re.match(
+                    r'^\s*[\u2014\u2013\-]{1,2}\s*\[([^\]]+)\]\(([^)]+)\)',
+                    lines[j]
+                )
+                if attr_match:
+                    attr_source = attr_match.group(1)
+                    attr_url = attr_match.group(2)
+
+            blocks.append({
+                'text': full_quote,
+                'end_pos': pos,
+                'attr_source': attr_source,
+                'attr_url': attr_url,
+            })
+        else:
+            pos += len(line) + 1
+            i += 1
+
+    return blocks
+
+
+def _check_quotes(content: str, articles: list[dict]) -> list[str]:
+    """Check that blockquotes match actual article content."""
+    issues = []
+
+    # Build combined text from all articles for searching
+    all_text = ""
+    for article in articles:
+        all_text += (
+            " " + (article.get("content") or "")
+            + " " + (article.get("summary") or "")
+        )
+    all_text = all_text.lower()
+
+    # Extract full quote blocks (handles multiline quotes)
+    blocks = _extract_quote_blocks(content)
+
+    for block in blocks:
+        quote = block['text']
+        if len(quote) < 15:
+            continue
+
+        quote_lower = quote.lower()
+        # Try exact match first, then a core substring
+        found = quote_lower in all_text
+        if not found:
+            core = quote_lower[:80]
+            found = len(core) >= 20 and core in all_text
+
+        if not found:
+            attr_info = ""
+            if block['attr_source']:
+                attr_info = f" (attributed to {block['attr_source']})"
+
+            issues.append(
+                f'FABRICATED QUOTE{attr_info}: The quote "{quote[:80]}..." '
+                f"does not appear in any article excerpt. Remove this quote "
+                f"or replace it with text actually found in the article."
+            )
+
+    return issues
+
+
+def _check_quote_attribution(content: str, articles: list[dict]) -> list[str]:
+    """Check that quotes are attributed to the correct article."""
+    issues = []
+
+    # Build URL-to-article lookup
+    url_to_article = {}
+    for article in articles:
+        url = article.get("url", "")
+        if url:
+            url_to_article[url] = article
+
+    # Extract full quote blocks with attributions
+    blocks = _extract_quote_blocks(content)
+
+    for block in blocks:
+        quote = block['text']
+        attr_source = block['attr_source']
+        attr_url = block['attr_url']
+
+        if len(quote) < 15 or not attr_url:
+            continue
+
+        # Find which article the URL points to
+        attributed_article = url_to_article.get(attr_url)
+        if not attributed_article:
+            continue
+
+        # Check if the quote is actually in that article's content
+        attr_content = (
+            (attributed_article.get("content") or "")
+            + " "
+            + (attributed_article.get("summary") or "")
+        ).lower()
+        quote_lower = quote.lower()
+
+        in_attributed = quote_lower in attr_content
+        if not in_attributed:
+            core = quote_lower[:80]
+            in_attributed = len(core) >= 20 and core in attr_content
+
+        if not in_attributed:
+            # Quote isn't in the attributed article — find where it actually is
+            real_source = _match_quote_to_article(quote, articles)
+            if real_source:
+                real_title = real_source.get("title", "Unknown")
+                issues.append(
+                    f'WRONG ATTRIBUTION: The quote "{quote[:60]}..." is '
+                    f'attributed to [{attr_source}]({attr_url}) but actually '
+                    f'comes from "{real_title}". Fix the attribution.'
+                )
+            else:
+                issues.append(
+                    f'UNVERIFIABLE QUOTE: The quote "{quote[:60]}..." is '
+                    f'attributed to [{attr_source}] but cannot be found in '
+                    f'that article or any other. Remove this quote.'
+                )
+
+    return issues
+
+
+def _check_boilerplate(content: str) -> list[str]:
+    """Detect generic filler phrases that indicate lazy generation."""
+    issues = []
+
+    boilerplate_phrases = [
+        r"raises questions about systemic design and incentive architecture",
+        r"highlights the attention economy.s emphasis on spectacle",
+        r"underscores the importance of data sovereignty",
+        r"a complex interplay between technological advancements",
+        r"user data may be used for targeted advertising",
+        r"the consequences of poorly designed systems",
+        r"a complex struggle for control over the narrative",
+        r"the means of production",
+    ]
+
+    found = []
+    for phrase in boilerplate_phrases:
+        matches = re.findall(phrase, content, re.IGNORECASE)
+        if len(matches) >= 2:
+            found.append(phrase.replace(r".s", "'s"))
+
+    if found:
+        issues.append(
+            f"BOILERPLATE REPETITION: The following generic phrases appear "
+            f"multiple times and add no insight: {'; '.join(found)}. "
+            f"Replace with specific analysis about what each article reveals."
+        )
+
+    return issues
+
+
+def _check_reused_quotes(content: str) -> list[str]:
+    """Detect the same quote text used more than once."""
+    issues = []
+
+    blocks = _extract_quote_blocks(content)
+    seen_quotes = {}
+    for block in blocks:
+        quote = block['text']
+        if len(quote) < 15:
+            continue
+        # Use full normalized text for comparison
+        normalized = quote.lower()
+        if normalized in seen_quotes:
+            seen_quotes[normalized] += 1
+        else:
+            seen_quotes[normalized] = 1
+
+    for quote_text, count in seen_quotes.items():
+        if count > 1:
+            issues.append(
+                f'REUSED QUOTE: "{quote_text[:80]}..." appears {count} times. '
+                f"Each article must have its own unique quote from its own "
+                f"excerpt, or no quote at all."
+            )
+
+    return issues
+
+
+def review_digest(content: str, articles: list[dict]) -> dict:
+    """Review a generated digest for structural and content quality issues.
+
+    Checks for:
+    1. Duplicate section headers (## Deep Dives appearing multiple times)
+    2. Fabricated quotes (not found in any article content)
+    3. Wrong quote attributions (quote from article A attributed to B)
+    4. Reused quotes (same quote pasted into multiple articles)
+    5. Boilerplate/filler phrases repeated across articles
+
+    Returns:
+        dict with 'passed' (bool), 'issues' (list of str), 'issue_count' (int)
+    """
+    all_issues = []
+
+    all_issues.extend(_check_duplicate_sections(content))
+    all_issues.extend(_check_quotes(content, articles))
+    all_issues.extend(_check_quote_attribution(content, articles))
+    all_issues.extend(_check_reused_quotes(content))
+    all_issues.extend(_check_boilerplate(content))
+
+    return {
+        "passed": len(all_issues) == 0,
+        "issues": all_issues,
+        "issue_count": len(all_issues),
+    }
+
+
+def _call_ollama_streaming(
+    system_prompt: str,
+    user_prompt: str,
+    model: str,
+    temperature: float,
+    num_ctx: int,
+    num_predict: int = 4096,
+) -> str:
+    """Call Ollama with streaming and return the full response text.
+
+    Raises on connection/timeout/API errors.
+    """
+    response = requests.post(
+        OLLAMA_GENERATE_URL,
+        json={
+            "model": model,
+            "prompt": user_prompt,
+            "system": system_prompt,
+            "stream": True,
+            "options": {
+                "num_ctx": num_ctx,
+                "temperature": temperature,
+                "num_predict": num_predict,
+            },
+        },
+        timeout=(30, 600),
+        stream=True,
+    )
+    response.raise_for_status()
+
+    content_parts = []
+    for line in response.iter_lines():
+        if line:
+            chunk = json.loads(line)
+            if "error" in chunk:
+                raise RuntimeError(f"Ollama error: {chunk['error']}")
+            content_parts.append(chunk.get("response", ""))
+            if chunk.get("done", False):
+                break
+
+    return "".join(content_parts).strip()
+
+
+def _build_article_reference(articles: list[dict]) -> str:
+    """Build a compact article reference for the revision prompt.
+
+    Includes titles, URLs, and content excerpts so the model can verify quotes.
+    """
+    parts = []
+    for article in articles:
+        title = article.get("title", "Untitled")
+        url = article.get("url", "")
+        source = article.get("source", "Unknown")
+        content = article.get("content", "")
+        # Truncate content for the revision prompt
+        if content and len(content) > 1500:
+            content = content[:1500] + "..."
+        parts.append(
+            f'### "{title}"\n'
+            f"Source: {source}\n"
+            f"URL: {url}\n"
+            f"Excerpt: {content or 'No content'}\n"
+        )
+    return "\n".join(parts)
+
+
+MAX_REVIEW_ITERATIONS = 3
+
+
 def generate_digest() -> dict:
     """
     Generate today's daily digest using score-aware article prioritization.
@@ -496,7 +857,9 @@ def generate_digest() -> dict:
     3. Compute dimensional profile for the day
     4. Build score-aware prompt with tiered article data
     5. Call Ollama with Abend digest prompt
-    6. Post-process links and save to database
+    6. Review output for quality issues (quotes, structure, boilerplate)
+    7. If issues found, send back to model with fix instructions (up to 3 loops)
+    8. Post-process links and save to database
 
     Returns:
         dict with 'success', 'content', 'article_count', and optionally 'error'
@@ -569,40 +932,74 @@ def generate_digest() -> dict:
 
     # Generate the digest using streaming to avoid read timeouts on large contexts
     try:
-        response = requests.post(
-            OLLAMA_GENERATE_URL,
-            json={
-                "model": model,
-                "prompt": "Generate today's briefing based on the scored and tiered articles provided.",
-                "system": prompt,
-                "stream": True,
-                "options": {
-                    "num_ctx": num_ctx,
-                    "temperature": temperature,
-                    "num_predict": 4096,
-                },
-            },
-            timeout=(30, 600),  # 30s connect, 600s between chunks
-            stream=True,
+        content = _call_ollama_streaming(
+            system_prompt=prompt,
+            user_prompt="Generate today's briefing based on the scored and tiered articles provided.",
+            model=model,
+            temperature=temperature,
+            num_ctx=num_ctx,
         )
-        response.raise_for_status()
 
-        content_parts = []
-        for line in response.iter_lines():
-            if line:
-                chunk = json.loads(line)
-                if "error" in chunk:
-                    logger.error(f"Ollama error: {chunk['error']}")
-                    result["error"] = chunk["error"]
-                    return result
-                content_parts.append(chunk.get("response", ""))
-                if chunk.get("done", False):
-                    break
-
-        content = "".join(content_parts).strip()
         if not content:
             result["error"] = "Model returned empty response"
             return result
+
+        # Review loop: check quality and revise if needed
+        article_ref = None  # Built lazily on first revision needed
+        for iteration in range(MAX_REVIEW_ITERATIONS):
+            review = review_digest(content, included)
+
+            if review["passed"]:
+                logger.info(
+                    f"Digest review passed on iteration {iteration + 1}"
+                )
+                break
+
+            logger.warning(
+                f"Digest review iteration {iteration + 1}: "
+                f"{review['issue_count']} issues found: "
+                + "; ".join(review["issues"][:5])
+            )
+
+            if iteration == MAX_REVIEW_ITERATIONS - 1:
+                logger.warning(
+                    f"Digest review: max iterations reached with "
+                    f"{review['issue_count']} remaining issues. "
+                    f"Proceeding with best available output."
+                )
+                break
+
+            # Build article reference lazily (only when revision is needed)
+            if article_ref is None:
+                article_ref = _build_article_reference(included)
+
+            # Build revision prompt with specific issues
+            issues_text = "\n".join(
+                f"{i+1}. {issue}" for i, issue in enumerate(review["issues"])
+            )
+            revision_prompt = REVIEW_REVISION_PROMPT.format(
+                issues=issues_text,
+                content=content,
+                article_data=article_ref,
+            )
+
+            # Revision needs larger context: original content + articles + instructions
+            revision_tokens = len(revision_prompt) // 4
+            revision_ctx = max(
+                num_ctx, ((revision_tokens + 5000) // 4096 + 1) * 4096
+            )
+
+            content = _call_ollama_streaming(
+                system_prompt=revision_prompt,
+                user_prompt="Fix the issues listed above and output the corrected briefing.",
+                model=model,
+                temperature=temperature,
+                num_ctx=revision_ctx,
+            )
+
+            if not content:
+                logger.error("Revision returned empty response, using previous version")
+                break
 
         # Post-process: ensure article titles are hyperlinked
         content = inject_article_links(content, included)
@@ -626,6 +1023,13 @@ def generate_digest() -> dict:
 
     except requests.exceptions.Timeout:
         error_msg = "Request timed out while generating digest"
+        logger.error(error_msg)
+        result["error"] = error_msg
+        return result
+
+    except RuntimeError as e:
+        # From _call_ollama_streaming on Ollama API errors
+        error_msg = str(e)
         logger.error(error_msg)
         result["error"] = error_msg
         return result
