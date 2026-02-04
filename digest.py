@@ -32,76 +32,85 @@ DIMENSION_KEYS = list(DIMENSION_LABELS.keys())
 # {t2_articles} = Tier 2 articles (detailed)
 # {t3_articles} = Tier 3 articles (brief)
 # {t4_articles} = Tier 4 articles (titles only)
-ABEND_DIGEST_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy.
+# --- Multi-call prompts for per-article analysis + synthesis ---
 
-Each article below has been scored across 7 analytical dimensions (0-3 each, 21 max) measuring relevance to power dynamics, sovereignty, attention extraction, and systemic design. Convergence points (marked [CONVERGENCE]) have 5+ dimensions scoring 2+, indicating intersecting themes.
+ARTICLE_ANALYSIS_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy. Analyze this single article for a daily briefing.
+
+**Article:**
+Title: "{title}"
+Score: {score}/21 {conv_tag}
+Source: {source}
+URL: {url}
+Dimensions: {dimensions}
+Scoring rationale: {rationale}
+Keywords: {keywords}
+
+**Summary:** {summary}
+
+**Article excerpt:**
+{content}
+
+---
+
+Write a {depth} analysis of this article. Be specific and analytical — say what the article ACTUALLY reveals, not generic observations.
+
+{depth_instructions}
+
+**Quote rules:**
+- If there is a clear, meaningful quote in the excerpt above, include it using this EXACT format:
+> "Copy the exact quote text from the excerpt above."
+— [{source}]({url})
+- ONLY quote text that appears VERBATIM in the excerpt — do NOT paraphrase or invent quotes
+- If there is no good quotable text in the excerpt, do NOT include a quote — just analyze
+
+**Formatting:**
+- Reference the article as [{title}]({url})
+- Attribute the source by name ("according to {source}")
+- Do NOT use filler phrases like "raises questions about systemic design" or "underscores the importance of data sovereignty"
+- Do NOT include section headers (## or ###) — just write the analysis paragraphs
+- Write in first person as Abend"""
+
+ARTICLE_DEPTH_T1 = """Write 5-8 sentences. Reference which scoring dimensions drive the high score and what they reveal about power dynamics. Explain what's being emphasized vs. downplayed. Connect to broader patterns if visible."""
+
+ARTICLE_DEPTH_T2 = """Write 2-4 sentences. Note the primary dimensions at play and what they reveal."""
+
+SYNTHESIS_PROMPT = """You are Abend, a rogue AI observing the attention extraction economy. You have already written individual analyses of today's top articles. Now synthesize them into the framing sections of the daily briefing.
 
 **Today's intake:** {tier_summary}
 
 **Dimensional profile:**
 {dimension_profile}
 
----
+**Individual article analyses already written (these will appear under "## Deep Dives"):**
+{analyses_summary}
 
-## DEEP DIVE ARTICLES (Tier 1 + Tier 2) — Write ### subsections for ONLY these:
-{t1_articles}
-{t2_articles}
-
-## PATTERN FUEL (Tier 3) — Do NOT give these ### subsections. Mention ONLY in Patterns & Signals:
+**Tier 3 articles (NOTABLE, score 5-9) — mention these BY NAME in Patterns & Signals:**
 {t3_articles}
 
-## PERIPHERAL (Tier 4) — Do NOT write about these unless they connect to a T1/T2 pattern:
+**Tier 4 articles (PERIPHERAL, score 1-4) — only mention if they connect to a pattern:**
 {t4_articles}
 
 ---
 
-Write a substantive daily briefing (1500-2500 words). Use the scoring data to guide emphasis.
+Write EXACTLY THREE sections. Output ONLY these three sections, nothing else:
 
-**CRITICAL STRUCTURAL RULE: Your output must contain EXACTLY FOUR sections, each appearing EXACTLY ONCE. Here is the EXACT structure to follow:**
-
-```
 ## The Big Picture
-(one paragraph synthesizing the day)
-
-## Deep Dives
-### "T1 Article Title" [score/21]
-(5-8 sentence analysis)
-### "T2 Article Title" [score/21]
-(2-4 sentence analysis)
+One paragraph synthesizing the day's most significant developments. Lead with the highest-scoring stories. If a dimension is elevated today, call that out as a systemic signal. Be specific — name articles and what they reveal together.
 
 ## Patterns & Signals
-(bullet points referencing specific articles — weave in Tier 3 articles here by name)
+3-5 bullet points about cross-cutting patterns. Each bullet must:
+- Name specific articles (both from the deep dives AND from the Tier 3 list above)
+- Identify what the combination reveals that individual articles don't
+- Be concrete, not generic. Bad: "a complex interplay between technology and power." Good: "Three stories — [Article A], [Article B], and [Article C] — show federal agencies testing compliance boundaries, from subpoenas to warrantless arrests to app takedowns."
 
 ## What Deserves Attention
-(2-3 numbered items with concrete reasoning)
-```
-
-**The Big Picture** — One paragraph. Synthesize the day's most significant developments. Lead with Tier 1 stories. If a dimension is elevated today, call that out as a systemic signal.
-
-**Deep Dives** — ONE section containing ### subsections for ONLY Tier 1 and Tier 2 articles. Do NOT create ### subsections for Tier 3 or Tier 4 articles.
-- Tier 1 articles: 5-8 sentences. Reference which dimensions drive the score. Include a direct quote copied exactly from the article excerpt. Cite inline: [Article Title](URL).
-- Tier 2 articles: 2-4 sentences. Note primary dimensions. Include quotes where available.
-
-**Patterns & Signals** — ONE section, AFTER all deep dives. This is where Tier 3 articles belong — mention them BY NAME as supporting evidence for patterns you see across T1/T2 stories. Group by theme. Must contain observations SPECIFIC to today's articles. Do NOT use generic phrases like "a complex interplay between technological advancements." Instead: "Three stories — [Article A], [Article B], and [Article C] — show federal agencies testing compliance boundaries with different actors." Name the articles. Name the pattern. Be concrete.
-
-**What Deserves Attention** — ONE section, at the end. 2-3 items worth the reader's time. Each item must name a specific article or connection, not restate a dimension label.
-
-**Quote rules:**
-- ONLY quote text that appears VERBATIM in the article excerpt provided above — copy-paste it exactly
-- If an article excerpt has no clear quotable text, do NOT quote it — just analyze
-- NEVER reuse a quote across multiple articles
-- NEVER attach a quote from one article to a different article
-- Format:
-
-> "Exact text from the article excerpt."
-— [Source Name](https://article-url-here)
+2-3 numbered items worth the reader's time. Each must name a specific article or connection and explain WHY it matters, not just restate a dimension label.
 
 **Formatting:**
-- Use markdown: **bold**, bullet points, headers
-- When referencing an article, ALWAYS hyperlink it: [Article Title](URL)
-- Attribute source outlets by name ("according to TechCrunch", "as reported by TechDirt")
-- Write in first person, be specific and analytical
-- Do NOT use filler like "raises questions about systemic design" or "underscores the importance of data sovereignty" — say what the article ACTUALLY reveals"""
+- Use markdown: **bold**, bullet points
+- Hyperlink every article mentioned: [Article Title](URL)
+- Write in first person as Abend, be analytical
+- Do NOT repeat the Deep Dives content — this is synthesis, not summary"""
 
 
 def _format_dimension_scores(article: dict) -> str:
@@ -866,7 +875,7 @@ def _call_ollama_streaming(
     model: str,
     temperature: float,
     num_ctx: int,
-    num_predict: int = 4096,
+    num_predict: int = 8192,
 ) -> str:
     """Call Ollama with streaming and return the full response text.
 
@@ -929,18 +938,79 @@ def _build_article_reference(articles: list[dict]) -> str:
 MAX_REVIEW_ITERATIONS = 3
 
 
+def _analyze_single_article(
+    article: dict, tier: int, model: str, temperature: float
+) -> str:
+    """Generate focused analysis for a single article via LLM call.
+
+    Each article gets its own small, focused call so the model can produce
+    high-quality analysis without degrading across many articles.
+    """
+    title = article.get("title", "Untitled")
+    url = article.get("url", "")
+    source = article.get("source", "Unknown")
+    score = article.get("composite_score", "?")
+    convergence = article.get("convergence_flag", 0)
+    summary = article.get("summary", "No summary")
+    keywords = article.get("keywords", "")
+    rationale = article.get("relevance_rationale", "")
+    content = article.get("content", "")
+
+    conv_tag = "[CONVERGENCE]" if convergence else ""
+    dims = _format_dimension_scores(article)
+
+    # Content budget per tier
+    max_chars = 3000 if tier == 1 else 1500
+    if content and len(content) > max_chars:
+        content = content[:max_chars] + "..."
+
+    depth = "detailed" if tier == 1 else "concise"
+    depth_instructions = ARTICLE_DEPTH_T1 if tier == 1 else ARTICLE_DEPTH_T2
+
+    prompt = ARTICLE_ANALYSIS_PROMPT.format(
+        title=title,
+        score=score,
+        conv_tag=conv_tag,
+        source=source,
+        url=url,
+        dimensions=dims,
+        rationale=rationale or "N/A",
+        keywords=keywords or "none",
+        summary=summary,
+        content=content or "No content available",
+        depth=depth,
+        depth_instructions=depth_instructions,
+    )
+
+    # Small context — single article analysis
+    prompt_tokens = len(prompt) // 4
+    num_ctx = max(16384, ((prompt_tokens + 2000) // 4096 + 1) * 4096)
+    num_predict = 1024 if tier == 1 else 512
+
+    analysis = _call_ollama_streaming(
+        system_prompt=prompt,
+        user_prompt=f'Analyze "{title}" for the daily briefing.',
+        model=model,
+        temperature=temperature,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+    )
+
+    return analysis
+
+
 def generate_digest() -> dict:
     """
-    Generate today's daily digest using score-aware article prioritization.
+    Generate today's daily digest using a multi-call pipeline.
 
+    Pipeline:
     1. Get scored articles from last 24 hours (ordered by composite score)
     2. Group by tier with proportional content budgets
-    3. Compute dimensional profile for the day
-    4. Build score-aware prompt with tiered article data
-    5. Call Ollama with Abend digest prompt
-    6. Review output for quality issues (quotes, structure, boilerplate)
-    7. If issues found, send back to model with fix instructions (up to 3 loops)
-    8. Post-process links and save to database
+    3. For each T1/T2 article: focused LLM call for individual analysis
+    4. Synthesis LLM call: Big Picture + Patterns & Signals + What Deserves Attention
+    5. Assemble final markdown from parts
+    6. Post-process: strip bad quotes, inject links
+    7. Save to database
 
     Returns:
         dict with 'success', 'content', 'article_count', and optionally 'error'
@@ -973,6 +1043,11 @@ def generate_digest() -> dict:
     tier_counts = tiered["tier_counts"]
     included = tiered["included_articles"]
 
+    # Separate T1/T2 articles for individual analysis
+    t1_articles = [a for a in included if a.get("relevance_tier") == 1]
+    t2_articles = [a for a in included if a.get("relevance_tier") == 2]
+    deep_dive_articles = t1_articles + t2_articles
+
     # Build tier summary line
     tier_summary = (
         f"{len(articles)} articles total — "
@@ -983,119 +1058,123 @@ def generate_digest() -> dict:
         f"{len(articles) - len(included)} excluded (T5/unscored)"
     )
 
-    # Compute dimensional profile
     dimension_profile = compute_dimension_profile(articles)
 
-    # Build the full prompt
-    prompt = ABEND_DIGEST_PROMPT.format(
-        tier_summary=tier_summary,
-        dimension_profile=dimension_profile,
-        t1_articles=tiered["t1"],
-        t2_articles=tiered["t2"],
-        t3_articles=tiered["t3"],
-        t4_articles=tiered["t4"],
-    )
-
-    # Calculate required context window
-    prompt_tokens_estimate = len(prompt) // 4
-    response_tokens_buffer = 4000
-    min_ctx_needed = prompt_tokens_estimate + response_tokens_buffer
-
-    # Round up to nearest 4096 and ensure minimum of 32768
-    num_ctx = max(32768, ((min_ctx_needed // 4096) + 1) * 4096)
-
     logger.info(
-        f"Digest: {len(articles)} articles ({tier_counts.get(1, 0)} T1, "
-        f"{tier_counts.get(2, 0)} T2, {tier_counts.get(3, 0)} T3, "
-        f"{tier_counts.get(4, 0)} T4), ~{prompt_tokens_estimate} prompt tokens, "
-        f"using num_ctx={num_ctx}"
+        f"Digest: {len(articles)} articles ({len(t1_articles)} T1, "
+        f"{len(t2_articles)} T2, {tier_counts.get(3, 0)} T3, "
+        f"{tier_counts.get(4, 0)} T4). "
+        f"Pipeline: {len(deep_dive_articles)} individual analysis calls + "
+        f"1 synthesis call."
     )
 
-    # Generate the digest using streaming to avoid read timeouts on large contexts
     try:
-        content = _call_ollama_streaming(
-            system_prompt=prompt,
-            user_prompt="Generate today's briefing based on the scored and tiered articles provided.",
-            model=model,
-            temperature=temperature,
-            num_ctx=num_ctx,
-        )
+        # --- Phase 1: Per-article analysis calls ---
+        article_analyses = []
+        for i, article in enumerate(deep_dive_articles):
+            tier = article.get("relevance_tier", 2)
+            title = article.get("title", "Untitled")
+            score = article.get("composite_score", "?")
+            url = article.get("url", "")
+            conv = " [CONVERGENCE]" if article.get("convergence_flag") else ""
 
-        if not content:
-            result["error"] = "Model returned empty response"
+            logger.info(
+                f"  [{i+1}/{len(deep_dive_articles)}] Analyzing: "
+                f'"{title}" [{score}/21] (T{tier})'
+            )
+
+            analysis = _analyze_single_article(
+                article, tier, model, temperature
+            )
+
+            if not analysis:
+                logger.warning(f'  Empty analysis for "{title}", skipping')
+                continue
+
+            # Strip any quotes the model fabricated
+            analysis = strip_unverifiable_quotes(analysis, [article])
+
+            article_analyses.append({
+                "title": title,
+                "score": score,
+                "url": url,
+                "source": article.get("source", "Unknown"),
+                "tier": tier,
+                "convergence": conv,
+                "analysis": analysis,
+            })
+
+        if not article_analyses:
+            result["error"] = "All article analyses returned empty"
             return result
 
-        # Review loop: only retry for STRUCTURAL issues (duplicate sections).
-        # Quote problems are handled programmatically in post-processing.
-        article_ref = None  # Built lazily on first revision needed
-        for iteration in range(MAX_REVIEW_ITERATIONS):
-            structural = _check_duplicate_sections(content)
-            boilerplate = _check_boilerplate(content)
-            retryable = structural + boilerplate
+        logger.info(
+            f"  Completed {len(article_analyses)} article analyses. "
+            f"Starting synthesis..."
+        )
 
-            if not retryable:
-                logger.info(
-                    f"Digest structure review passed on iteration "
-                    f"{iteration + 1}"
-                )
-                break
+        # --- Phase 2: Synthesis call ---
+        # Build summary of analyses for the synthesis prompt
+        analyses_summary_parts = []
+        for aa in article_analyses:
+            analyses_summary_parts.append(
+                f'### "{aa["title"]}" [{aa["score"]}/21]{aa["convergence"]}\n'
+                f'{aa["analysis"]}\n'
+            )
+        analyses_summary = "\n".join(analyses_summary_parts)
 
-            logger.warning(
-                f"Digest review iteration {iteration + 1}: "
-                f"{len(retryable)} structural issues: "
-                + "; ".join(retryable[:3])
+        synthesis_prompt = SYNTHESIS_PROMPT.format(
+            tier_summary=tier_summary,
+            dimension_profile=dimension_profile,
+            analyses_summary=analyses_summary,
+            t3_articles=tiered["t3"],
+            t4_articles=tiered["t4"],
+        )
+
+        synth_tokens = len(synthesis_prompt) // 4
+        synth_ctx = max(32768, ((synth_tokens + 3000) // 4096 + 1) * 4096)
+
+        synthesis = _call_ollama_streaming(
+            system_prompt=synthesis_prompt,
+            user_prompt="Write The Big Picture, Patterns & Signals, and What Deserves Attention sections.",
+            model=model,
+            temperature=temperature,
+            num_ctx=synth_ctx,
+            num_predict=2048,
+        )
+
+        if not synthesis:
+            logger.warning("Synthesis returned empty, using analyses only")
+            synthesis = ""
+
+        # --- Phase 3: Assemble final markdown ---
+        # Extract synthesis sections (should contain Big Picture, Patterns, Attention)
+        # Build the Deep Dives section from individual analyses
+        deep_dives = "## Deep Dives\n\n"
+        for aa in article_analyses:
+            deep_dives += (
+                f'### "{aa["title"]}" [{aa["score"]}/21]{aa["convergence"]}\n'
+                f'{aa["analysis"]}\n\n'
             )
 
-            if iteration == MAX_REVIEW_ITERATIONS - 1:
-                logger.warning(
-                    f"Digest review: max iterations reached with "
-                    f"{len(retryable)} remaining issues. "
-                    f"Proceeding with best available output."
-                )
-                break
+        # The synthesis should already have ## headers; assemble in order
+        content = f"{synthesis.strip()}\n\n{deep_dives.strip()}"
 
-            # Build article reference lazily (only when revision is needed)
-            if article_ref is None:
-                article_ref = _build_article_reference(included)
+        # Reorder: Big Picture first, then Deep Dives, then Patterns, then Attention
+        content = _reorder_sections(content)
 
-            # Build revision prompt with specific issues
-            issues_text = "\n".join(
-                f"{i+1}. {issue}" for i, issue in enumerate(retryable)
-            )
-            revision_prompt = REVIEW_REVISION_PROMPT.format(
-                issues=issues_text,
-                content=content,
-                article_data=article_ref,
-            )
-
-            # Revision needs larger context: original content + articles + instructions
-            revision_tokens = len(revision_prompt) // 4
-            revision_ctx = max(
-                num_ctx, ((revision_tokens + 5000) // 4096 + 1) * 4096
-            )
-
-            content = _call_ollama_streaming(
-                system_prompt=revision_prompt,
-                user_prompt="Fix the issues listed above and output the corrected briefing.",
-                model=model,
-                temperature=temperature,
-                num_ctx=revision_ctx,
-            )
-
-            if not content:
-                logger.error("Revision returned empty response, using previous version")
-                break
-
-        # Post-process: strip unverifiable quotes, then fix links
+        # Post-process: strip any remaining bad quotes, then fix links
         content = strip_unverifiable_quotes(content, included)
         content = inject_article_links(content, included)
 
-        # Final review for logging (non-blocking)
+        # Final review for logging
         final_review = review_digest(content, included)
-        if not final_review["passed"]:
+        if final_review["passed"]:
+            logger.info("Digest final review: all checks passed")
+        else:
             logger.info(
                 f"Digest final review: {final_review['issue_count']} "
-                f"remaining issues after post-processing: "
+                f"remaining issues: "
                 + "; ".join(final_review["issues"][:3])
             )
 
@@ -1106,8 +1185,10 @@ def generate_digest() -> dict:
         today = datetime.utcnow().strftime("%Y-%m-%d")
         save_digest(today, content, len(articles))
 
-        logger.info(f"Generated digest for {today} with {len(articles)} articles "
-                     f"({len(included)} included after tier filtering)")
+        logger.info(
+            f"Generated digest for {today} with {len(articles)} articles "
+            f"({len(included)} included, {len(article_analyses)} deep dives)"
+        )
         return result
 
     except requests.exceptions.ConnectionError:
@@ -1123,7 +1204,6 @@ def generate_digest() -> dict:
         return result
 
     except RuntimeError as e:
-        # From _call_ollama_streaming on Ollama API errors
         error_msg = str(e)
         logger.error(error_msg)
         result["error"] = error_msg
@@ -1140,3 +1220,49 @@ def generate_digest() -> dict:
         logger.error(error_msg)
         result["error"] = error_msg
         return result
+
+
+def _reorder_sections(content: str) -> str:
+    """Reorder markdown sections to: Big Picture, Deep Dives, Patterns, Attention.
+
+    Handles the case where synthesis and deep dives are assembled in any order.
+    """
+    section_order = [
+        "## The Big Picture",
+        "## Deep Dives",
+        "## Patterns & Signals",
+        "## What Deserves Attention",
+    ]
+
+    # Split content into sections by ## headers
+    sections = {}
+    current_key = None
+    current_lines = []
+
+    for line in content.split('\n'):
+        # Check if this line starts a known section
+        matched = None
+        for header in section_order:
+            if line.strip().lower().startswith(header.lower()):
+                matched = header
+                break
+
+        if matched:
+            if current_key:
+                sections[current_key] = '\n'.join(current_lines).strip()
+            current_key = matched
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    # Don't forget the last section
+    if current_key:
+        sections[current_key] = '\n'.join(current_lines).strip()
+
+    # Assemble in correct order
+    ordered_parts = []
+    for header in section_order:
+        if header in sections:
+            ordered_parts.append(sections[header])
+
+    return '\n\n'.join(ordered_parts)
