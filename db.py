@@ -1,5 +1,6 @@
 """Database layer for Sieve - SQLite operations for articles and settings."""
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -64,6 +65,14 @@ def init_db():
             "convergence_flag INTEGER",
             "relevance_rationale TEXT",
             "scored_at TEXT",
+            # Phase 2 gap: contextualized summarization
+            "context_article_ids TEXT",
+            # Phase 3a: entity extraction
+            "entities TEXT",
+            "entities_extracted_at TEXT",
+            # Phase 3b: topic classification
+            "topics TEXT",
+            "topics_classified_at TEXT",
         ]:
             try:
                 cursor.execute(f"ALTER TABLE articles ADD COLUMN {column_def}")
@@ -100,6 +109,30 @@ def init_db():
             )
         """)
 
+        # Threads table (Phase 3c)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS threads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                primary_entities TEXT,
+                article_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Junction table: articles <-> threads (many-to-many)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS article_threads (
+                article_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (article_id, thread_id),
+                FOREIGN KEY (article_id) REFERENCES articles(id),
+                FOREIGN KEY (thread_id) REFERENCES threads(id)
+            )
+        """)
+
         # Index for faster lookups
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_articles_url ON articles(url)
@@ -118,6 +151,18 @@ def init_db():
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_articles_composite_score ON articles(composite_score)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_articles_entities_extracted ON articles(entities_extracted_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_articles_topics_classified ON articles(topics_classified_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_article_threads_article ON article_threads(article_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_article_threads_thread ON article_threads(thread_id)
         """)
 
         # Create vector search virtual table using sqlite-vec
@@ -283,6 +328,14 @@ def get_articles(filters=None, page=1, per_page=20, sort="date_desc"):
     elif filters.get("has_score") is False:
         where_clauses.append("scored_at IS NULL")
 
+    if filters.get("topic"):
+        where_clauses.append("topics LIKE ?")
+        params.append(f"%{filters['topic']}%")
+
+    if filters.get("entity"):
+        where_clauses.append("entities LIKE ?")
+        params.append(f"%{filters['entity']}%")
+
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
     # Determine sort order
@@ -306,7 +359,7 @@ def get_articles(filters=None, page=1, per_page=20, sort="date_desc"):
         cursor.execute(f"""
             SELECT id, title, url, source, pub_date, pulled_at, content, summary,
                    keywords, summarized_at, created_at, composite_score, relevance_tier,
-                   convergence_flag
+                   convergence_flag, topics
             FROM articles
             WHERE {where_sql}
             ORDER BY {order_sql}
@@ -327,7 +380,9 @@ def get_article(article_id):
                    composite_score, relevance_tier, convergence_flag,
                    d1_attention_economy, d2_data_sovereignty, d3_power_consolidation,
                    d4_coercion_cooperation, d5_fear_trust, d6_democratization,
-                   d7_systemic_design, relevance_rationale, scored_at
+                   d7_systemic_design, relevance_rationale, scored_at,
+                   context_article_ids, entities, entities_extracted_at,
+                   topics, topics_classified_at
             FROM articles
             WHERE id = ?
         """, (article_id,))
@@ -744,3 +799,331 @@ def get_articles_by_ids(article_ids):
             WHERE id IN ({placeholders})
         """, article_ids)
         return [dict(row) for row in cursor.fetchall()]
+
+
+# ============================================================================
+# Contextualized summarization functions
+# ============================================================================
+
+def get_articles_needing_context_resummarization():
+    """Get articles that have been summarized and embedded but lack context."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, url, source, pub_date, content
+            FROM articles
+            WHERE summary IS NOT NULL
+                AND context_article_ids IS NULL
+                AND embedded_at IS NOT NULL
+            ORDER BY pub_date DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def update_summary_with_context(article_id, summary, keywords, context_article_ids):
+    """Update summary with context tracking.
+
+    Args:
+        article_id: Article ID
+        summary: New summary text
+        keywords: List of keyword strings
+        context_article_ids: List of article IDs used as context
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        keywords_str = ",".join(keywords) if keywords else None
+        context_json = json.dumps(context_article_ids) if context_article_ids else "[]"
+        cursor.execute("""
+            UPDATE articles
+            SET summary = ?, keywords = ?, summarized_at = ?, context_article_ids = ?
+            WHERE id = ?
+        """, (summary, keywords_str, datetime.utcnow().isoformat(), context_json, article_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def search_by_embedding_with_date(query_embedding_blob, limit=5, days=30, exclude_id=None):
+    """Find similar articles using vector search, filtered by date.
+
+    Args:
+        query_embedding_blob: Binary blob of query embedding
+        limit: Number of results to return
+        days: Only include articles from the last N days
+        exclude_id: Article ID to exclude from results
+
+    Returns:
+        List of article dicts with similarity scores
+    """
+    since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # KNN search returns top results; we fetch extra to account for filtering
+        fetch_limit = limit + 5
+        cursor.execute("""
+            SELECT
+                a.id, a.title, a.url, a.source, a.pub_date, a.summary, a.keywords,
+                v.distance
+            FROM vec_articles v
+            JOIN articles a ON v.article_id = a.id
+            WHERE v.embedding MATCH ?
+                AND k = ?
+            ORDER BY v.distance
+        """, (query_embedding_blob, fetch_limit))
+
+        results = []
+        for row in cursor.fetchall():
+            article = dict(row)
+            # Apply date and exclusion filters
+            if exclude_id and article["id"] == exclude_id:
+                continue
+            if article.get("pub_date") and article["pub_date"] < since:
+                continue
+            article["similarity"] = 1.0 / (1.0 + article["distance"])
+            results.append(article)
+            if len(results) >= limit:
+                break
+
+        return results
+
+
+# ============================================================================
+# Entity extraction functions
+# ============================================================================
+
+def get_unextracted_articles():
+    """Get all articles with summary but no entities extracted."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, content, summary
+            FROM articles
+            WHERE summary IS NOT NULL AND entities_extracted_at IS NULL
+            ORDER BY pub_date DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def update_entities(article_id, entities_json):
+    """Store extracted entities for an article.
+
+    Args:
+        article_id: Article ID
+        entities_json: JSON string of entities dict
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE articles
+            SET entities = ?, entities_extracted_at = ?
+            WHERE id = ?
+        """, (entities_json, datetime.utcnow().isoformat(), article_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_entities_extracted_count():
+    """Get number of articles with extracted entities."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM articles WHERE entities_extracted_at IS NOT NULL")
+        return cursor.fetchone()[0]
+
+
+# ============================================================================
+# Topic classification functions
+# ============================================================================
+
+def get_unclassified_articles():
+    """Get all articles with summary but no topics classified."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, content, summary, keywords
+            FROM articles
+            WHERE summary IS NOT NULL AND topics_classified_at IS NULL
+            ORDER BY pub_date DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def update_topics(article_id, topics_str):
+    """Store classified topics for an article.
+
+    Args:
+        article_id: Article ID
+        topics_str: Comma-separated topic string
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE articles
+            SET topics = ?, topics_classified_at = ?
+            WHERE id = ?
+        """, (topics_str, datetime.utcnow().isoformat(), article_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_topics_classified_count():
+    """Get number of articles with classified topics."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM articles WHERE topics_classified_at IS NOT NULL")
+        return cursor.fetchone()[0]
+
+
+def get_all_topics():
+    """Get list of unique topics from all articles, sorted by frequency."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT topics FROM articles WHERE topics IS NOT NULL")
+
+        topic_counts = {}
+        for row in cursor.fetchall():
+            if row["topics"]:
+                for t in row["topics"].split(","):
+                    t = t.strip()
+                    if t:
+                        topic_counts[t] = topic_counts.get(t, 0) + 1
+
+        return sorted(topic_counts.keys(), key=lambda t: (-topic_counts[t], t.lower()))
+
+
+# ============================================================================
+# Thread functions
+# ============================================================================
+
+def get_articles_with_entities_in_range(days=30):
+    """Get articles with embeddings AND entities from last N days."""
+    since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, summary, entities, pub_date, embedding
+            FROM articles
+            WHERE embedded_at IS NOT NULL
+                AND entities_extracted_at IS NOT NULL
+                AND pub_date >= ?
+            ORDER BY pub_date DESC
+        """, (since,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def create_thread(name, primary_entities_json):
+    """Create a new thread. Returns the thread ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        cursor.execute("""
+            INSERT INTO threads (name, primary_entities, article_count, created_at, updated_at)
+            VALUES (?, ?, 0, ?, ?)
+        """, (name, primary_entities_json, now, now))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def update_thread(thread_id, name=None, primary_entities=None, article_count=None):
+    """Update thread fields."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        updates = ["updated_at = ?"]
+        params = [datetime.utcnow().isoformat()]
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if primary_entities is not None:
+            updates.append("primary_entities = ?")
+            params.append(primary_entities)
+        if article_count is not None:
+            updates.append("article_count = ?")
+            params.append(article_count)
+
+        params.append(thread_id)
+        cursor.execute(f"""
+            UPDATE threads SET {', '.join(updates)} WHERE id = ?
+        """, params)
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def add_articles_to_thread(thread_id, article_ids):
+    """Add articles to a thread (idempotent)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        for aid in article_ids:
+            cursor.execute(
+                "INSERT OR IGNORE INTO article_threads (article_id, thread_id, added_at) VALUES (?, ?, ?)",
+                (aid, thread_id, now),
+            )
+        # Update thread article count
+        cursor.execute(
+            "SELECT COUNT(*) FROM article_threads WHERE thread_id = ?",
+            (thread_id,),
+        )
+        count = cursor.fetchone()[0]
+        cursor.execute(
+            "UPDATE threads SET article_count = ?, updated_at = ? WHERE id = ?",
+            (count, now, thread_id),
+        )
+        conn.commit()
+
+
+def get_article_threads(article_id):
+    """Get threads associated with an article."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.id, t.name, t.article_count, t.primary_entities, t.updated_at
+            FROM threads t
+            JOIN article_threads at_ ON t.id = at_.thread_id
+            WHERE at_.article_id = ?
+            ORDER BY t.updated_at DESC
+        """, (article_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_thread_articles(thread_id):
+    """Get articles in a thread."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.id, a.title, a.url, a.source, a.pub_date, a.summary, a.keywords,
+                   a.composite_score, a.relevance_tier
+            FROM articles a
+            JOIN article_threads at_ ON a.id = at_.article_id
+            WHERE at_.thread_id = ?
+            ORDER BY a.pub_date DESC
+        """, (thread_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_threads(limit=50):
+    """Get recent threads ordered by last update."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, name, primary_entities, article_count, created_at, updated_at
+            FROM threads
+            ORDER BY updated_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_all_thread_article_ids():
+    """Get all article-thread associations as a dict of thread_id -> set of article_ids."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT thread_id, article_id FROM article_threads")
+        result = {}
+        for row in cursor.fetchall():
+            tid = row["thread_id"]
+            if tid not in result:
+                result[tid] = set()
+            result[tid].add(row["article_id"])
+        return result

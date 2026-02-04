@@ -67,6 +67,39 @@
         Failed: {{ job_state.result.error }}
         {% endif %}
     </p>
+    {% elif job_state.type == 'entities' %}
+    <p>
+        Extracted: {{ job_state.result.extracted }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
+    {% elif job_state.type == 'topics' %}
+    <p>
+        Classified: {{ job_state.result.classified }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
+    {% elif job_state.type == 'threads' %}
+    <p>
+        Threads created: {{ job_state.result.threads_created }},
+        Updated: {{ job_state.result.threads_updated }},
+        Articles linked: {{ job_state.result.articles_linked }}
+    </p>
+    {% elif job_state.type == 'resummarize' %}
+    <p>
+        Re-summarized: {{ job_state.result.resummarized }},
+        Failed: {{ job_state.result.failed }}
+        {% if job_state.result.stopped_early %}<mark>STOPPED EARLY</mark>{% endif %}
+    </p>
+    {% if job_state.result.last_error %}
+    <p><small><strong>Error:</strong> {{ job_state.result.last_error }}</small></p>
+    {% endif %}
     {% elif job_state.type == 'pipeline' %}
     <p>
         {% if job_state.result.ingest %}
@@ -83,6 +116,15 @@
         {% endif %}
         {% if job_state.result.score %}
         | Scored: {{ job_state.result.score.scored }}
+        {% endif %}
+        {% if job_state.result.entities and job_state.result.entities.extracted is defined %}
+        | Entities: {{ job_state.result.entities.extracted }}
+        {% endif %}
+        {% if job_state.result.topics and job_state.result.topics.classified is defined %}
+        | Topics: {{ job_state.result.topics.classified }}
+        {% endif %}
+        {% if job_state.result.threads and job_state.result.threads.threads_created is defined %}
+        | Threads: {{ job_state.result.threads.threads_created }} new
         {% endif %}
     </p>
     {% if job_state.result.summarize and job_state.result.summarize.stopped_early %}

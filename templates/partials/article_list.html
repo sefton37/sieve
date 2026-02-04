@@ -28,6 +28,13 @@
             {% endfor %}
         </p>
         {% endif %}
+        {% if article.topics %}
+        <p class="topics">
+            {% for t in article.topics.split(',') %}
+            <span class="topic-tag">{{ t.strip() }}</span>
+            {% endfor %}
+        </p>
+        {% endif %}
         {% else %}
         <p class="content-preview">{{ article.content|truncate_content(200) }}</p>
         <p><small><em>Not yet summarized</em></small></p>
@@ -40,13 +47,13 @@
 {% if total_pages > 1 %}
 <nav class="pagination">
     {% if page > 1 %}
-    <a href="{{ url_for('index', page=page-1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, sort=sort) }}">&laquo; Previous</a>
+    <a href="{{ url_for('index', page=page-1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, topic=topic, entity=entity, sort=sort) }}">&laquo; Previous</a>
     {% endif %}
 
     <span>Page {{ page }} of {{ total_pages }}</span>
 
     {% if page < total_pages %}
-    <a href="{{ url_for('index', page=page+1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, sort=sort) }}">Next &raquo;</a>
+    <a href="{{ url_for('index', page=page+1, source=source, has_summary=has_summary, date_from=date_from, date_to=date_to, search=search, keyword=keyword, tier=tier, topic=topic, entity=entity, sort=sort) }}">Next &raquo;</a>
     {% endif %}
 </nav>
 {% endif %}

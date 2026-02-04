@@ -7,7 +7,14 @@ from enum import Enum
 
 import requests
 
-from db import get_all_settings, get_unsummarized_articles, update_summary
+from db import (
+    get_all_settings,
+    get_articles_needing_context_resummarization,
+    get_unsummarized_articles,
+    search_by_embedding_with_date,
+    update_summary,
+    update_summary_with_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +95,47 @@ def parse_response(text: str) -> tuple[str | None, list[str]]:
     return summary, keywords
 
 
-def summarize_article(title, content, settings=None) -> SummarizeResult:
+def _format_context_block(context_articles):
+    """Format related articles into a context block for the summarization prompt.
+
+    Args:
+        context_articles: List of article dicts with title, source, pub_date, summary
+
+    Returns:
+        Formatted string to prepend to the prompt, or empty string if no context
+    """
+    if not context_articles:
+        return ""
+
+    lines = ["Related coverage from the past 30 days:"]
+    for ctx in context_articles[:5]:
+        date_str = ctx.get("pub_date", "unknown")[:10]
+        source = ctx.get("source", "Unknown")
+        ctx_title = ctx.get("title", "Untitled")
+        summary = ctx.get("summary", "")
+        lines.append(f'- [{date_str}] [{source}]: "{ctx_title}"')
+        if summary:
+            lines.append(f"  Summary: {summary}")
+
+    lines.append("")
+    lines.append(
+        "If this article represents a development in an ongoing story, "
+        "note how it relates to prior coverage. Note contradictions or "
+        "new developments compared to earlier reporting."
+    )
+
+    return "\n".join(lines)
+
+
+def summarize_article(title, content, settings=None, context_articles=None) -> SummarizeResult:
     """
     Summarize a single article using Ollama.
+
+    Args:
+        title: Article title
+        content: Article content text
+        settings: Optional settings dict (fetched if not provided)
+        context_articles: Optional list of related article dicts for contextualized summarization
 
     Returns:
         SummarizeResult with success status, summary text, keywords, and error details
@@ -109,7 +154,12 @@ def summarize_article(title, content, settings=None) -> SummarizeResult:
     if content and len(content) > MAX_CONTENT_LENGTH:
         content = content[:MAX_CONTENT_LENGTH] + "..."
 
-    prompt = f"Title: {title}\n\nContent:\n{content}"
+    # Build prompt with optional context block
+    context_block = _format_context_block(context_articles)
+    if context_block:
+        prompt = f"Title: {title}\n\n{context_block}\n\nContent:\n{content}"
+    else:
+        prompt = f"Title: {title}\n\nContent:\n{content}"
 
     try:
         response = requests.post(
@@ -237,9 +287,47 @@ FATAL_ERRORS = {ErrorType.CONNECTION, ErrorType.MODEL_NOT_FOUND, ErrorType.SERVE
 MAX_CONSECUTIVE_FAILURES = 3
 
 
+def _fetch_context_for_article(article_id, title, settings):
+    """Fetch related articles for contextualized summarization.
+
+    Embeds the article title and searches for similar recently-published articles
+    that already have embeddings (from previous pipeline runs).
+
+    Args:
+        article_id: ID of the article being summarized (excluded from results)
+        title: Article title to use as embedding query
+        settings: Settings dict with embed model config
+
+    Returns:
+        Tuple of (context_articles list, context_ids list), or ([], []) on failure
+    """
+    from embed import embed_text, embedding_to_blob
+
+    try:
+        er = embed_text(title, settings)
+        if not er.success:
+            logger.warning(f"Context search failed for article {article_id}: could not embed title")
+            return [], []
+
+        query_blob = embedding_to_blob(er.embedding)
+        context_articles = search_by_embedding_with_date(
+            query_blob, limit=5, days=30, exclude_id=article_id
+        )
+        context_ids = [a["id"] for a in context_articles]
+        return context_articles, context_ids
+
+    except Exception as e:
+        logger.warning(f"Context search failed for article {article_id}: {e}")
+        return [], []
+
+
 def summarize_batch(on_progress=None):
     """
     Process all unsummarized articles with fail-fast on systemic errors.
+
+    For each article, searches for related previously-embedded articles to
+    provide context for a more informed summary. If context search fails,
+    proceeds without context.
 
     Stops immediately on connection errors or model not found.
     Stops after MAX_CONSECUTIVE_FAILURES consecutive failures for other errors.
@@ -276,10 +364,17 @@ def summarize_batch(on_progress=None):
 
         logger.info(f"[{i + 1}/{total}] Summarizing: {title[:60]}...")
 
-        sr = summarize_article(title, content, settings)
+        # Fetch related articles for context (non-fatal if it fails)
+        context_articles, context_ids = _fetch_context_for_article(
+            article_id, title, settings
+        )
+        if context_articles:
+            logger.info(f"[{i + 1}/{total}] Found {len(context_articles)} context articles")
+
+        sr = summarize_article(title, content, settings, context_articles=context_articles)
 
         if sr.success:
-            update_summary(article_id, sr.summary, sr.keywords)
+            update_summary_with_context(article_id, sr.summary, sr.keywords, context_ids)
             result["summarized"] += 1
             consecutive_failures = 0
             logger.info(f"[{i + 1}/{total}] Success - {len(sr.keywords)} keywords extracted")
@@ -304,7 +399,7 @@ def summarize_batch(on_progress=None):
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 result["stopped_early"] = True
                 result["last_error"] = f"Stopped after {MAX_CONSECUTIVE_FAILURES} consecutive failures. Last: {sr.error_message}"
-                logger.error(f"Too many consecutive failures, stopping batch")
+                logger.error("Too many consecutive failures, stopping batch")
                 break
 
         # Progress callback
@@ -316,6 +411,101 @@ def summarize_batch(on_progress=None):
 
     logger.info(
         f"Batch complete: {result['summarized']} summarized, "
+        f"{result['failed']} failed, stopped_early={result['stopped_early']}"
+    )
+
+    return result
+
+
+def resummarize_with_context_batch(on_progress=None):
+    """
+    Re-summarize articles that were previously summarized without context.
+
+    Backfill function: finds articles that have been summarized and embedded
+    but lack context_article_ids, and re-summarizes them with related article
+    context from the existing embedded corpus.
+
+    Same fail-fast pattern as summarize_batch.
+
+    Returns:
+        dict with resummarized, failed, errors, last_error, stopped_early
+    """
+    result = {
+        "resummarized": 0,
+        "failed": 0,
+        "errors": [],
+        "last_error": None,
+        "stopped_early": False,
+    }
+
+    articles = get_articles_needing_context_resummarization()
+    total = len(articles)
+
+    if total == 0:
+        logger.info("No articles need context re-summarization")
+        return result
+
+    settings = get_all_settings()
+    model = settings.get("ollama_model", "llama3.2")
+
+    logger.info(f"Starting context re-summarization: {total} articles with model '{model}'")
+
+    consecutive_failures = 0
+
+    for i, article in enumerate(articles):
+        article_id = article["id"]
+        title = article["title"]
+        content = article.get("content", "")
+
+        logger.info(f"[{i + 1}/{total}] Re-summarizing: {title[:60]}...")
+
+        # Fetch related articles for context
+        context_articles, context_ids = _fetch_context_for_article(
+            article_id, title, settings
+        )
+        if context_articles:
+            logger.info(f"[{i + 1}/{total}] Found {len(context_articles)} context articles")
+
+        sr = summarize_article(title, content, settings, context_articles=context_articles)
+
+        if sr.success:
+            update_summary_with_context(article_id, sr.summary, sr.keywords, context_ids)
+            result["resummarized"] += 1
+            consecutive_failures = 0
+            logger.info(f"[{i + 1}/{total}] Success - {len(sr.keywords)} keywords extracted")
+        else:
+            result["failed"] += 1
+            consecutive_failures += 1
+
+            error_msg = f"Article {article_id}: {sr.error_message}"
+            result["errors"].append(error_msg)
+            result["last_error"] = sr.error_message
+
+            logger.warning(f"[{i + 1}/{total}] Failed: {sr.error_message}")
+
+            # Check for fatal errors - stop immediately
+            if sr.error_type in FATAL_ERRORS:
+                result["stopped_early"] = True
+                result["last_error"] = f"FATAL: {sr.error_message} - stopping batch"
+                logger.error(f"Fatal error detected, stopping batch: {sr.error_message}")
+                break
+
+            # Check for too many consecutive failures
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                result["stopped_early"] = True
+                result["last_error"] = f"Stopped after {MAX_CONSECUTIVE_FAILURES} consecutive failures. Last: {sr.error_message}"
+                logger.error("Too many consecutive failures, stopping batch")
+                break
+
+        # Progress callback
+        if on_progress:
+            try:
+                on_progress(i + 1, total)
+            except Exception as e:
+                logger.warning(f"Progress callback error: {e}")
+
+    logger.info(
+        f"Re-summarization complete: {result['resummarized']} resummarized, "
         f"{result['failed']} failed, stopped_early={result['stopped_early']}"
     )
 

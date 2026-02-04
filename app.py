@@ -10,19 +10,23 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 from db import (
     clear_chat_history,
     get_all_settings,
+    get_all_topics,
     get_article,
     get_article_count,
+    get_article_threads,
     get_articles,
     get_articles_by_ids,
     get_chat_history,
     get_digest,
     get_embedded_count,
+    get_entities_extracted_count,
     get_keywords,
     get_recent_digests,
     get_score_distribution,
     get_scored_count,
     get_sources,
     get_summarized_count,
+    get_topics_classified_count,
     init_db,
     save_chat_message,
     set_setting,
@@ -53,7 +57,7 @@ app = Flask(__name__)
 # Job state tracking (in-memory, single user)
 job_state = {
     "running": False,
-    "type": None,  # "ingest", "summarize", "pipeline", "embed", "score", or "digest"
+    "type": None,  # "ingest", "summarize", "pipeline", "embed", "score", "digest", "entities", "topics", "threads", "resummarize"
     "stage": None,  # For pipeline: "ingest", "compress", "summarize", "embed"
     "current": 0,
     "total": 0,
@@ -269,6 +273,131 @@ def run_digest_job():
             job_state["running"] = False
 
 
+def run_entity_job():
+    """Run batch entity extraction in background thread."""
+    global job_state
+    from entities import extract_batch
+
+    def on_progress(current, total):
+        with job_lock:
+            job_state["current"] = current
+            job_state["total"] = total
+
+    try:
+        with job_lock:
+            job_state["running"] = True
+            job_state["type"] = "entities"
+            job_state["current"] = 0
+            job_state["total"] = 0
+            job_state["error"] = None
+
+        result = extract_batch(on_progress=on_progress)
+
+        with job_lock:
+            job_state["result"] = result
+
+    except Exception as e:
+        logger.error(f"Entity extraction job failed: {e}")
+        with job_lock:
+            job_state["error"] = str(e)
+    finally:
+        with job_lock:
+            job_state["running"] = False
+
+
+def run_topic_job():
+    """Run batch topic classification in background thread."""
+    global job_state
+    from topics import classify_batch
+
+    def on_progress(current, total):
+        with job_lock:
+            job_state["current"] = current
+            job_state["total"] = total
+
+    try:
+        with job_lock:
+            job_state["running"] = True
+            job_state["type"] = "topics"
+            job_state["current"] = 0
+            job_state["total"] = 0
+            job_state["error"] = None
+
+        result = classify_batch(on_progress=on_progress)
+
+        with job_lock:
+            job_state["result"] = result
+
+    except Exception as e:
+        logger.error(f"Topic classification job failed: {e}")
+        with job_lock:
+            job_state["error"] = str(e)
+    finally:
+        with job_lock:
+            job_state["running"] = False
+
+
+def run_thread_job():
+    """Run thread detection in background thread."""
+    global job_state
+    from threads import detect_threads
+
+    try:
+        with job_lock:
+            job_state["running"] = True
+            job_state["type"] = "threads"
+            job_state["current"] = 0
+            job_state["total"] = 1
+            job_state["message"] = "Detecting threads..."
+            job_state["error"] = None
+
+        result = detect_threads()
+
+        with job_lock:
+            job_state["current"] = 1
+            job_state["result"] = result
+
+    except Exception as e:
+        logger.error(f"Thread detection job failed: {e}")
+        with job_lock:
+            job_state["error"] = str(e)
+    finally:
+        with job_lock:
+            job_state["running"] = False
+
+
+def run_resummarize_job():
+    """Run context re-summarization in background thread."""
+    global job_state
+    from summarize import resummarize_with_context_batch
+
+    def on_progress(current, total):
+        with job_lock:
+            job_state["current"] = current
+            job_state["total"] = total
+
+    try:
+        with job_lock:
+            job_state["running"] = True
+            job_state["type"] = "resummarize"
+            job_state["current"] = 0
+            job_state["total"] = 0
+            job_state["error"] = None
+
+        result = resummarize_with_context_batch(on_progress=on_progress)
+
+        with job_lock:
+            job_state["result"] = result
+
+    except Exception as e:
+        logger.error(f"Re-summarize job failed: {e}")
+        with job_lock:
+            job_state["error"] = str(e)
+    finally:
+        with job_lock:
+            job_state["running"] = False
+
+
 @app.route("/")
 def index():
     """Browse articles with filtering and pagination."""
@@ -280,6 +409,8 @@ def index():
     search = request.args.get("search", "")
     keyword = request.args.get("keyword", "")
     tier = request.args.get("tier", "")
+    topic = request.args.get("topic", "")
+    entity = request.args.get("entity", "")
     sort = request.args.get("sort", "date_desc")
     page = request.args.get("page", 1, type=int)
     per_page = 20
@@ -305,11 +436,16 @@ def index():
             filters["tier"] = int(tier)
         except ValueError:
             pass
+    if topic:
+        filters["topic"] = topic
+    if entity:
+        filters["entity"] = entity
 
     articles, total = get_articles(filters=filters, page=page, per_page=per_page, sort=sort)
     total_pages = ceil(total / per_page) if total > 0 else 1
     sources = get_sources()
     keywords = get_keywords()
+    topics_list = get_all_topics()
 
     # Stats
     article_count = get_article_count()
@@ -327,6 +463,8 @@ def index():
         search=search,
         keyword=keyword,
         tier=tier,
+        topic=topic,
+        entity=entity,
         sort=sort,
     )
 
@@ -339,6 +477,7 @@ def index():
         **template_vars,
         sources=sources,
         keywords=keywords,
+        topics_list=topics_list,
         article_count=article_count,
         summarized_count=summarized_count,
     )
@@ -347,10 +486,29 @@ def index():
 @app.route("/article/<int:article_id>")
 def article_view(article_id):
     """View a single article."""
+    import json as json_module
+
     article = get_article(article_id)
     if not article:
         return "Article not found", 404
-    return render_template("article.html", article=article)
+
+    # Parse entities JSON into dict for template
+    entities_parsed = None
+    if article.get("entities"):
+        try:
+            entities_parsed = json_module.loads(article["entities"])
+        except (json_module.JSONDecodeError, TypeError):
+            pass
+
+    # Fetch threads for this article
+    threads = get_article_threads(article_id)
+
+    return render_template(
+        "article.html",
+        article=article,
+        entities_parsed=entities_parsed,
+        threads=threads,
+    )
 
 
 @app.route("/article/<int:article_id>/summarize", methods=["POST"])
@@ -400,6 +558,9 @@ def settings_page():
     article_count = get_article_count()
     summarized_count = get_summarized_count()
     embedded_count = get_embedded_count()
+    scored_count = get_scored_count()
+    entities_count = get_entities_extracted_count()
+    topics_count = get_topics_classified_count()
     ollama_models = get_ollama_models()
     next_pipeline = get_next_pipeline_run()
     next_digest = get_next_digest_run()
@@ -411,6 +572,9 @@ def settings_page():
         article_count=article_count,
         summarized_count=summarized_count,
         embedded_count=embedded_count,
+        scored_count=scored_count,
+        entities_count=entities_count,
+        topics_count=topics_count,
         job_state=state,
         ollama_models=ollama_models,
         next_pipeline_run=next_pipeline,
@@ -425,12 +589,16 @@ def stats():
     summarized_count = get_summarized_count()
     embedded_count = get_embedded_count()
     scored_count = get_scored_count()
+    entities_count = get_entities_extracted_count()
+    topics_count = get_topics_classified_count()
     return render_template(
         "partials/stats.html",
         article_count=article_count,
         summarized_count=summarized_count,
         embedded_count=embedded_count,
         scored_count=scored_count,
+        entities_count=entities_count,
+        topics_count=topics_count,
     )
 
 
@@ -664,6 +832,83 @@ def trigger_score():
         })
 
     return jsonify({"status": "started", "type": "score"})
+
+
+@app.route("/entities", methods=["POST"])
+def trigger_entities():
+    """Trigger batch entity extraction job."""
+    with job_lock:
+        if job_state["running"]:
+            return jsonify({"error": "Another job is running"}), 409
+
+    thread = threading.Thread(target=run_entity_job)
+    thread.daemon = True
+    thread.start()
+
+    if request.headers.get("HX-Request"):
+        return render_template("partials/job_status.html", job_state={
+            "running": True, "type": "entities", "current": 0, "total": 0, "error": None, "result": None
+        })
+
+    return jsonify({"status": "started", "type": "entities"})
+
+
+@app.route("/topics", methods=["POST"])
+def trigger_topics():
+    """Trigger batch topic classification job."""
+    with job_lock:
+        if job_state["running"]:
+            return jsonify({"error": "Another job is running"}), 409
+
+    thread = threading.Thread(target=run_topic_job)
+    thread.daemon = True
+    thread.start()
+
+    if request.headers.get("HX-Request"):
+        return render_template("partials/job_status.html", job_state={
+            "running": True, "type": "topics", "current": 0, "total": 0, "error": None, "result": None
+        })
+
+    return jsonify({"status": "started", "type": "topics"})
+
+
+@app.route("/threads", methods=["POST"])
+def trigger_threads():
+    """Trigger thread detection job."""
+    with job_lock:
+        if job_state["running"]:
+            return jsonify({"error": "Another job is running"}), 409
+
+    thread = threading.Thread(target=run_thread_job)
+    thread.daemon = True
+    thread.start()
+
+    if request.headers.get("HX-Request"):
+        return render_template("partials/job_status.html", job_state={
+            "running": True, "type": "threads", "current": 0, "total": 1,
+            "message": "Detecting threads...", "error": None, "result": None
+        })
+
+    return jsonify({"status": "started", "type": "threads"})
+
+
+@app.route("/resummarize", methods=["POST"])
+def trigger_resummarize():
+    """Trigger context re-summarization job."""
+    with job_lock:
+        if job_state["running"]:
+            return jsonify({"error": "Another job is running"}), 409
+
+    thread = threading.Thread(target=run_resummarize_job)
+    thread.daemon = True
+    thread.start()
+
+    if request.headers.get("HX-Request"):
+        return render_template("partials/job_status.html", job_state={
+            "running": True, "type": "resummarize", "current": 0, "total": 0, "error": None, "result": None
+        })
+
+    return jsonify({"status": "started", "type": "resummarize"})
 
 
 @app.route("/chat")

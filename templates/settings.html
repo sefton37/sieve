@@ -18,7 +18,7 @@
 <section>
     <h2>Hourly Pipeline</h2>
     <p>
-        Runs automatically every hour: ingest new articles, compress JSONL, summarize, embed, and score.
+        Runs automatically every hour: ingest, compress, summarize (with context), embed, score, extract entities, classify topics, and detect threads.
         {% if next_pipeline_run %}
         <br><small>Next run: <strong>{{ next_pipeline_run|format_date }}</strong></small>
         {% endif %}
@@ -73,6 +73,43 @@
                 class="secondary outline"
             >
                 Score Only
+            </button>
+        </div>
+        <div class="grid">
+            <button
+                hx-post="{{ url_for('trigger_entities') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Extract Entities
+            </button>
+
+            <button
+                hx-post="{{ url_for('trigger_topics') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Classify Topics
+            </button>
+
+            <button
+                hx-post="{{ url_for('trigger_threads') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Detect Threads
+            </button>
+
+            <button
+                hx-post="{{ url_for('trigger_resummarize') }}"
+                hx-target="#job-status"
+                hx-swap="innerHTML"
+                class="secondary outline"
+            >
+                Re-summarize with Context
             </button>
         </div>
     </details>

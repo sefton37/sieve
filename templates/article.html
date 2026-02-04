@@ -47,6 +47,50 @@
     </section>
     {% endif %}
 
+    <!-- Topics -->
+    {% if article.topics %}
+    <section>
+        <h2>Topics</h2>
+        <p class="topics">
+            {% for t in article.topics.split(',') %}
+            <span class="topic-tag">{{ t.strip() }}</span>
+            {% endfor %}
+        </p>
+    </section>
+    {% endif %}
+
+    <!-- Entities -->
+    {% if entities_parsed %}
+    <section>
+        <h2>Entities</h2>
+        {% for category, items in entities_parsed.items() %}
+        {% if items %}
+        <p>
+            <strong>{{ category|title }}:</strong>
+            {% for item in items %}
+            <span class="entity-tag entity-{{ category }}">{{ item }}</span>
+            {% endfor %}
+        </p>
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- Threads -->
+    {% if threads %}
+    <section>
+        <h2>Story Threads</h2>
+        <ul>
+            {% for thread in threads %}
+            <li>
+                <strong>{{ thread.name }}</strong>
+                <small>({{ thread.article_count }} articles)</small>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
     <!-- Full Content -->
     <section>
         <h2>Full Content</h2>

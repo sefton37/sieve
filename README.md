@@ -1,10 +1,10 @@
 # Sieve
 
-A local-first news intelligence tool that ingests RSS articles, summarizes, embeds, and scores them with Ollama, and provides a web interface for browsing, filtering, RAG-based chat, score-aware daily digests, and score distribution analytics.
+A local-first news intelligence tool that ingests RSS articles, summarizes (with related article context), embeds, scores, extracts entities, classifies topics, and detects story threads with Ollama, and provides a web interface for browsing, filtering, RAG-based chat, score-aware daily digests, and score distribution analytics.
 
 ## Overview
 
-Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries, embeddings, and 7-dimension relevance scores via Ollama, and serves a web UI for browsing, chatting with the corpus, and reading score-prioritized daily digests.
+Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries (with related article context), embeddings, 7-dimension relevance scores, entity extractions, and topic classifications via Ollama, detects story threads algorithmically, and serves a web UI for browsing, chatting with the corpus, and reading score-prioritized daily digests.
 
 ```
 [n8n JSONL export] → [Sieve Pipeline] → [SQLite + sqlite-vec] → [Ollama Summarize + Embed + Score] → [Web UI]
@@ -21,12 +21,15 @@ Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in
 │              │                                                           │
 │              ▼                                                           │
 │   ┌──────────────────────────────────────────────────────┐               │
-│   │              Pipeline Orchestrator                    │               │
-│   │   1. Ingest   - Parse JSONL, dedupe by URL           │               │
-│   │   2. Compress - Deduplicate source JSONL             │               │
-│   │   3. Summarize - Batch summarize via Ollama          │               │
-│   │   4. Embed    - Batch embed via Ollama               │               │
-│   │   5. Score    - 7-dimension relevance scoring        │               │
+│   │              Pipeline Orchestrator (8 stages)         │               │
+│   │   1. Ingest    - Parse JSONL, dedupe by URL          │               │
+│   │   2. Compress  - Deduplicate source JSONL            │               │
+│   │   3. Summarize - Batch summarize via Ollama (+ctx)   │               │
+│   │   4. Embed     - Batch embed via Ollama              │               │
+│   │   5. Score     - 7-dimension relevance scoring       │               │
+│   │   6. Entities  - Named entity extraction             │               │
+│   │   7. Topics    - Topic classification                │               │
+│   │   8. Threads   - Story thread detection              │               │
 │   └──────────────────┬───────────────────────────────────┘               │
 │                      │                                                   │
 │                      ▼                                                   │
@@ -36,6 +39,8 @@ Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in
 │   │                  │      │   - /api/generate        │                 │
 │   │  - articles      │      │   - /api/embed           │                 │
 │   │  - vec_articles  │      └──────────────────────────┘                 │
+│   │  - threads       │                                                   │
+│   │  - article_threads│                                                  │
 │   │  - settings      │                                                   │
 │   │  - chat_messages │                                                   │
 │   │  - digests       │                                                   │
@@ -95,6 +100,12 @@ CREATE TABLE articles (
     convergence_flag INTEGER,    -- 1 if 5+ dimensions scored 2+
     relevance_rationale TEXT,    -- LLM explanation of scoring
     scored_at TEXT,
+    -- Phase 3: Structure
+    context_article_ids TEXT,    -- JSON array of IDs used as context during summarization
+    entities TEXT,               -- JSON: {"companies":[], "people":[], "products":[], "legislation":[], "other":[]}
+    entities_extracted_at TEXT,
+    topics TEXT,                 -- comma-separated from fixed taxonomy
+    topics_classified_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -117,6 +128,26 @@ CREATE TABLE chat_messages (
     content TEXT NOT NULL,
     sources TEXT,                 -- JSON array of article IDs
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Threads table
+CREATE TABLE threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    primary_entities TEXT,       -- JSON array of top entity names
+    article_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Article-thread junction table
+CREATE TABLE article_threads (
+    article_id INTEGER NOT NULL,
+    thread_id INTEGER NOT NULL,
+    added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (article_id, thread_id),
+    FOREIGN KEY (article_id) REFERENCES articles(id),
+    FOREIGN KEY (thread_id) REFERENCES threads(id)
 );
 
 -- Digests table
@@ -152,7 +183,10 @@ Sieve/
 ├── summarize.py        # Ollama summarization with keyword extraction
 ├── embed.py            # Ollama embedding (nomic-embed-text, 768-dim)
 ├── score.py            # 7-dimension relevance scoring via Ollama
-├── pipeline.py         # Orchestrator: ingest → compress → summarize → embed → score
+├── entities.py         # Named entity extraction via Ollama (5 categories)
+├── topics.py           # Topic classification via Ollama (17-topic taxonomy)
+├── threads.py          # Algorithmic story thread detection (embedding + entity overlap)
+├── pipeline.py         # Orchestrator: ingest → compress → summarize → embed → score → entities → topics → threads
 ├── scheduler.py        # APScheduler: hourly pipeline, daily digest
 ├── chat.py             # RAG chat: embed query → vector search → generate
 ├── digest.py           # Score-aware daily digest generation in Abend voice
@@ -184,15 +218,18 @@ Sieve/
 
 ### 1. Browse (`/`)
 - Paginated article grid
-- Filter by: source, keyword, summary status, date range, text search, relevance tier
+- Filter by: source, keyword, summary status, date range, text search, relevance tier, topic, entity
 - Sort by: date (newest/oldest), score (highest/lowest)
-- Shows: title, source, date, summary preview, keyword tags, color-coded tier badge with score, convergence flag
+- Shows: title, source, date, summary preview, keyword tags, topic tags, color-coded tier badge with score, convergence flag
 - Click to view full article
 
 ### 2. Article (`/article/<id>`)
 - Full article content
 - Summary with keywords (or "not yet summarized")
 - Relevance scoring: composite score, tier badge, convergence flag, per-dimension scores, rationale (if scored)
+- Topics: classified topic tags
+- Entities: categorized entity tags (companies, people, products, legislation, other)
+- Story threads: linked thread names with article counts
 - Button: "Regenerate summary"
 - Metadata: source, dates, link to original
 
@@ -220,8 +257,8 @@ Sieve/
 - Convergence count and percentage
 
 ### 6. Settings (`/settings`)
-- **Live stats** - Article count, summarized, embedded, scored, pending (auto-refreshing)
-- **Job management** - Hourly pipeline trigger, individual action buttons (ingest, summarize, embed, score), job progress display
+- **Live stats** - Article count, summarized, embedded, scored, entities extracted, topics classified (auto-refreshing)
+- **Job management** - Hourly pipeline trigger, individual action buttons (ingest, summarize, embed, score, extract entities, classify topics, detect threads, re-summarize with context), job progress display
 - **Ollama config** - Model dropdown (from installed models), context window slider, temperature
 - **Ingestion** - JSONL path, auto-ingest toggle, cron schedule
 
@@ -239,7 +276,11 @@ POST /ingest                  # Trigger JSONL ingestion
 POST /summarize               # Trigger batch summarization
 POST /embed                   # Trigger batch embedding
 POST /score                   # Trigger batch relevance scoring
-POST /pipeline                # Trigger full pipeline (ingest → compress → summarize → embed → score)
+POST /entities                # Trigger batch entity extraction
+POST /topics                  # Trigger batch topic classification
+POST /threads                 # Trigger thread detection
+POST /resummarize             # Trigger context re-summarization (backfill)
+POST /pipeline                # Trigger full pipeline (8 stages)
 GET  /status                  # Job status (HTMX partial or JSON)
 GET  /stats                   # Live statistics (HTMX partial)
 
@@ -257,7 +298,7 @@ POST /digest/generate         # Generate daily digest
 
 ### Summarization (`/api/generate`)
 
-Sends articles to Ollama with a structured prompt requesting both a summary paragraph (5-8 sentences) and 3-5 keywords. Parses the response to extract both. Uses the model configured in settings (default: `llama3.2`). Truncates article content to 6000 chars. 120-second timeout per article. Fail-fast on fatal errors (connection lost, model not found, OOM).
+Sends articles to Ollama with a structured prompt requesting both a summary paragraph (5-8 sentences) and 3-5 keywords. For each article, searches for up to 5 related previously-embedded articles from the past 30 days and injects their summaries as context, enabling the LLM to note connections, contradictions, and developments in ongoing stories. Parses the response to extract both. Uses the model configured in settings (default: `llama3.2`). Truncates article content to 6000 chars. 120-second timeout per article. Fail-fast on fatal errors (connection lost, model not found, OOM).
 
 ### Embedding (`/api/embed`)
 
@@ -283,6 +324,18 @@ LLM provides the 7 dimension scores + a rationale. Python computes composite (0-
 | 5-9 | T3 | Notable — brief mention |
 | 1-4 | T4 | Peripheral — log only |
 | 0 | T5 | Skip — excluded |
+
+### Entity Extraction (`/api/generate`)
+
+Extracts named entities from each article across 5 categories: companies, people, products, legislation, and other. Returns a JSON object with entity arrays. Max 10 entities per category. Same fail-fast pattern as scoring.
+
+### Topic Classification (`/api/generate`)
+
+Classifies each article into 1-3 topics from a fixed 17-topic taxonomy: `ai_regulation`, `ai_capabilities`, `surveillance`, `platform_dynamics`, `labor_displacement`, `consolidation`, `privacy`, `content_moderation`, `startup_funding`, `layoffs`, `acquisitions`, `open_source`, `hardware`, `infrastructure`, `cybersecurity`, `crypto`, `other`. Stored as comma-separated string. Unknown topics mapped to "other".
+
+### Thread Detection (Algorithmic)
+
+Detects story threads by combining embedding similarity (KNN top-5) with entity overlap (2+ shared entities) to build an article relationship graph. Finds connected components via BFS and creates/extends threads for clusters of 5+ articles. Names threads from the most frequent entity. No LLM calls — purely algorithmic.
 
 ### Digest (`/api/generate` with scored article batch)
 
@@ -320,9 +373,12 @@ sudo systemctl enable --now sieve
 2. **Hourly pipeline runs** (or manual trigger):
    - Ingests JSONL, deduplicates by URL, inserts new articles
    - Compresses JSONL file (deduplicates source file)
-   - Batch summarizes unsummarized articles via Ollama (with keyword extraction)
+   - Batch summarizes unsummarized articles via Ollama (with keyword extraction and related article context)
    - Batch embeds unembedded articles via Ollama
    - Batch scores articles across 7 relevance dimensions via Ollama
+   - Extracts named entities from summarized articles
+   - Classifies articles into topics from fixed taxonomy
+   - Detects and links story threads from entity overlap + embedding similarity
 3. **You browse** → filter articles by tier/score, sort by relevance, read summaries
 4. **You chat** → ask questions, get RAG-powered answers grounded in your articles
 5. **Daily digest** → generated at 6 AM (configurable), score-aware narrative briefing in Abend voice with tiered depth
@@ -332,7 +388,7 @@ sudo systemctl enable --now sieve
 
 | Job | Default Schedule | Purpose |
 |-----|-----------------|---------|
-| Pipeline | `0 * * * *` (hourly) | Full ingest → compress → summarize → embed → score cycle |
+| Pipeline | `0 * * * *` (hourly) | Full 8-stage cycle: ingest → compress → summarize → embed → score → entities → topics → threads |
 | Digest | `0 6 * * *` (6 AM) | Generate daily briefing (if auto_digest enabled) |
 | Ingest | Configurable | Legacy standalone ingestion (if auto_ingest enabled) |
 

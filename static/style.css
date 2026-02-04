@@ -290,3 +290,37 @@
     margin-left: 0.2rem;
     vertical-align: middle;
 }
+
+/* Topic tags */
+.topics {
+    margin-top: 0.3rem;
+}
+
+.topic-tag {
+    display: inline-block;
+    background: #1565c0;
+    color: white;
+    padding: 0.15rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    margin-right: 0.3rem;
+    margin-bottom: 0.3rem;
+}
+
+/* Entity tags */
+.entity-tag {
+    display: inline-block;
+    background: #7b1fa2;
+    color: white;
+    padding: 0.15rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    margin-right: 0.3rem;
+    margin-bottom: 0.3rem;
+}
+
+.entity-tag.entity-companies { background: #7b1fa2; }
+.entity-tag.entity-people { background: #00838f; }
+.entity-tag.entity-products { background: #4527a0; }
+.entity-tag.entity-legislation { background: #c62828; }
+.entity-tag.entity-other { background: #546e7a; }

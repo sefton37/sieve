@@ -120,16 +120,23 @@ CREATE VIRTUAL TABLE vec_articles USING vec0(
 );
 ```
 
+**Implemented enrichment columns** (added via migration):
+
+```sql
+    context_article_ids TEXT,        -- JSON array of IDs used as context during summarization
+    entities TEXT,                   -- JSON: {"companies":[], "people":[], "products":[], "legislation":[], "other":[]}
+    entities_extracted_at TEXT,
+    topics TEXT,                     -- Comma-separated from fixed taxonomy
+    topics_classified_at TEXT,
+```
+
 **Aspirational schema additions** (not yet implemented):
 
 ```sql
--- Future columns for enrichment/synthesis layers
+-- Future columns for additional enrichment
     url_normalized  TEXT,            -- for advanced dedup
     content_hash    TEXT,            -- for content-based dedup
     source_category TEXT,            -- wire|institutional|critical|edge
-    entities        TEXT,            -- JSON extracted entities
-    topics          TEXT,            -- classified topics
-    thread_ids      TEXT,            -- linked narrative threads
     gap_score       REAL,            -- stated intent vs actual dynamics
 ```
 
@@ -400,7 +407,7 @@ Store enriched article
 
 | Workflow | Schedule | Purpose | Status |
 |----------|----------|---------|--------|
-| Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed → score | ✅ |
+| Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed → score → entities → topics → threads | ✅ |
 | Daily digest | 6 AM (`0 6 * * *`) | Generate score-aware narrative briefing | ✅ |
 | Legacy ingest | Configurable cron | Standalone ingestion only | ✅ |
 | Thread synthesis | Weekly | Generate thread narratives | Planned |
@@ -440,7 +447,7 @@ Store enriched article
 - [x] Vector similarity search (KNN via vec_articles)
 - [x] Related article retrieval (used in RAG chat)
 - [x] RAG chat interface (embed query → search → generate with context)
-- [ ] Contextualized summarization (inject related articles into summary prompt)
+- [x] Contextualized summarization (inject related articles into summary prompt)
 
 ### Phase 2.5: Relevance Scoring ✅ Complete
 - [x] 7-dimension relevance scoring via No One Rubric (score.py)
@@ -451,11 +458,11 @@ Store enriched article
 - [x] Score distribution dashboard (/scores)
 - [x] Score badges on article cards (color-coded by tier)
 
-### Phase 3: Structure
-- [ ] Entity extraction
-- [ ] Topic classification
-- [ ] Thread detection and linking
-- [ ] Entity-based queries
+### Phase 3: Structure ✅ Complete
+- [x] Entity extraction (entities.py — LLM-based, 5 categories, JSON storage)
+- [x] Topic classification (topics.py — LLM-based, fixed 17-topic taxonomy)
+- [x] Thread detection and linking (threads.py — algorithmic, embedding similarity + entity overlap)
+- [x] Entity-based queries (browse filter by entity text search, topic dropdown)
 
 ### Phase 4: Synthesis
 - [ ] Weekly thread reports
@@ -465,9 +472,10 @@ Store enriched article
 
 ### Phase 5: Interface (Partial)
 - [x] Web interface (Flask + HTMX)
-- [x] Search by source, keyword, date range, text, tier, score
+- [x] Search by source, keyword, date range, text, tier, score, topic, entity
 - [x] Score distribution analytics page
-- [ ] Thread browsing
+- [x] Thread display on article detail pages
+- [ ] Dedicated thread browsing page
 - [ ] Export to blog drafts
 
 ---
@@ -486,18 +494,20 @@ Summary of what's built vs. the full vision as of the current codebase:
 | 3: Enrichment | Embeddings (nomic-embed-text, sqlite-vec) | ✅ |
 | 3: Enrichment | 7-dimension relevance scoring (No One Rubric) | ✅ |
 | 3: Enrichment | Score distribution dashboard | ✅ |
-| 3: Enrichment | Entity extraction | Not yet |
-| 3: Enrichment | Topic classification | Not yet |
+| 3: Enrichment | Entity extraction (5 categories, LLM-based) | ✅ |
+| 3: Enrichment | Topic classification (17-topic taxonomy, LLM-based) | ✅ |
 | 4: Synthesis | Score-aware daily digest (Abend voice, tiered depth) | ✅ |
 | 4: Synthesis | RAG chat over corpus | ✅ |
-| 4: Synthesis | Thread detection | Not yet |
+| 4: Synthesis | Contextualized summarization (related article context) | ✅ |
+| 4: Synthesis | Thread detection (embedding similarity + entity overlap) | ✅ |
 | 4: Synthesis | Weekly thread reports | Not yet |
-| 5: Presentation | Web UI (browse, filter, search, sort by score, tier filter) | ✅ |
+| 5: Presentation | Web UI (browse, filter, search, sort by score, tier, topic, entity) | ✅ |
 | 5: Presentation | Score badges on article cards | ✅ |
 | 5: Presentation | Chat interface | ✅ |
 | 5: Presentation | Digest viewer | ✅ |
 | 5: Presentation | Score analytics (/scores) | ✅ |
-| 5: Presentation | Thread browsing, export | Not yet |
+| 5: Presentation | Thread display on article pages | ✅ |
+| 5: Presentation | Dedicated thread browsing, export | Not yet |
 
 **Key architectural decisions made:**
 - SQLite + sqlite-vec chosen over PostgreSQL + pgvector (simpler, local-first)
@@ -509,6 +519,11 @@ Summary of what's built vs. the full vision as of the current codebase:
 - Per-dimension scores stored as individual INTEGER columns (not JSON blob) for SQL filtering/sorting
 - Convergence threshold set to 5+ dimensions at 2+ (~30% selectivity) to maintain signal value
 - Score-aware digests use tiered content budgets: context window allocated proportionally to article importance
+- Entity extraction and topic classification as separate LLM calls (not combined) for modularity and independent failure handling
+- Thread detection is purely algorithmic (embedding KNN + entity overlap → connected components), not LLM-based, for speed and determinism
+- Thread cluster threshold of 5 articles minimum to filter noise
+- Pipeline stages 6-8 (entities, topics, threads) are non-fatal: failures are logged but don't stop the pipeline
+- Contextualized summarization searches for related articles from previous pipeline runs (current articles not yet embedded)
 
 ---
 

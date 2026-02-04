@@ -58,6 +58,21 @@
 
         <div class="grid">
             <label>
+                Topic
+                <select name="topic">
+                    <option value="">All Topics</option>
+                    {% for t in topics_list %}
+                    <option value="{{ t }}" {% if t == topic %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>
+                Entity
+                <input type="text" name="entity" value="{{ entity }}" placeholder="Search entities...">
+            </label>
+
+            <label>
                 Search
                 <input type="text" name="search" value="{{ search }}" placeholder="Search titles...">
             </label>
