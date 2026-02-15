@@ -11,6 +11,28 @@ from db import article_exists, insert_article
 
 logger = logging.getLogger(__name__)
 
+# Canonical source names — maps lowercase variants to preferred casing
+SOURCE_NAMES = {
+    "techcrunch": "TechCrunch",
+    "tech crunch": "TechCrunch",
+    "tech dirt": "Tech Dirt",
+    "techdirt": "Tech Dirt",
+    "eff": "EFF",
+    "404 media": "404 Media",
+    "ars technica": "Ars Technica",
+    "the verge": "The Verge",
+    "rest of world": "Rest of World",
+    "interconnects": "Interconnects",
+    "where's your ed at": "Where's Your Ed At",
+}
+
+
+def normalize_source(source):
+    """Normalize source name to canonical casing."""
+    if not source:
+        return source
+    return SOURCE_NAMES.get(source.lower().strip(), source)
+
 
 def normalize_date(date_string):
     """
@@ -63,6 +85,10 @@ def parse_jsonl(filepath):
                 # Normalize pub_date from RFC 2822 to ISO 8601
                 if "pub_date" in article:
                     article["pub_date"] = normalize_date(article["pub_date"])
+
+                # Normalize source name casing
+                if "source" in article:
+                    article["source"] = normalize_source(article["source"])
 
                 yield article
 
