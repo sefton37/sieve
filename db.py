@@ -724,11 +724,12 @@ def get_articles_since(since_datetime):
 
 
 def get_articles_since_scored(since_datetime):
-    """Get articles published since a given datetime, with scoring data.
+    """Get articles scored since a given datetime, with scoring data.
 
     Returns articles ordered by composite_score DESC (highest first),
-    including all relevance scoring columns. Articles without scores
-    are included at the end (treated as unscored).
+    including all relevance scoring columns. Filters by scored_at so
+    the digest includes all recently-analyzed articles regardless of
+    when they were originally published.
     """
     with get_db() as conn:
         cursor = conn.cursor()
@@ -741,7 +742,7 @@ def get_articles_since_scored(since_datetime):
                    relevance_rationale
             FROM articles
             WHERE summary IS NOT NULL
-                AND pub_date >= ?
+                AND scored_at >= ?
             ORDER BY composite_score DESC NULLS LAST, pub_date DESC
         """, (since_datetime.isoformat(),))
         return [dict(row) for row in cursor.fetchall()]

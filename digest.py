@@ -70,7 +70,7 @@ Write a {depth} analysis of this article for a general audience. Be specific and
 
 **Formatting:**
 - Reference the article as [{title}]({url})
-- Attribute the source by name ("according to {source}")
+- ALWAYS name the publication: say "according to {source}" or "{source} reports" — NEVER write "this article", "the article", or "the report" without naming the source
 - Do NOT use filler phrases like "raises questions about systemic design" or "underscores the importance of data sovereignty"
 - Do NOT include section headers (## or ###) — just write the analysis paragraphs
 - Write in first person as Abend"""
@@ -118,6 +118,7 @@ One paragraph synthesizing the day's most significant developments. Lead with th
 **Formatting:**
 - Use markdown: **bold**, bullet points
 - Hyperlink every article mentioned: [Article Title](URL)
+- ALWAYS name the publication when referencing an article (e.g., "Ars Technica reports", "according to The Verge") — NEVER write "this article" or "the article" without naming the source
 - Write in first person as Abend, be analytical
 - Do NOT repeat the Deep Dives content — this is synthesis, not summary"""
 
@@ -1157,6 +1158,7 @@ def generate_digest() -> dict:
         for aa in article_analyses:
             deep_dives += (
                 f'### [{aa["title"]}]({aa["url"]})\n'
+                f'*{aa["source"]}*\n\n'
                 f'{aa["analysis"]}\n\n'
             )
 
