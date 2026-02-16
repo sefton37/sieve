@@ -723,28 +723,47 @@ def get_articles_since(since_datetime):
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_articles_since_scored(since_datetime):
-    """Get articles scored since a given datetime, with scoring data.
+def get_articles_since_scored(since_datetime, until_datetime=None):
+    """Get articles scored in a time window, with scoring data.
 
     Returns articles ordered by composite_score DESC (highest first),
     including all relevance scoring columns. Filters by scored_at so
     the digest includes all recently-analyzed articles regardless of
     when they were originally published.
+
+    Args:
+        since_datetime: Start of window (inclusive).
+        until_datetime: End of window (exclusive). If None, no upper bound.
     """
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, title, url, source, pub_date, summary, keywords, content,
-                   composite_score, relevance_tier, convergence_flag,
-                   d1_attention_economy, d2_data_sovereignty,
-                   d3_power_consolidation, d4_coercion_cooperation,
-                   d5_fear_trust, d6_democratization, d7_systemic_design,
-                   relevance_rationale
-            FROM articles
-            WHERE summary IS NOT NULL
-                AND scored_at >= ?
-            ORDER BY composite_score DESC NULLS LAST, pub_date DESC
-        """, (since_datetime.isoformat(),))
+        if until_datetime:
+            cursor.execute("""
+                SELECT id, title, url, source, pub_date, summary, keywords, content,
+                       composite_score, relevance_tier, convergence_flag,
+                       d1_attention_economy, d2_data_sovereignty,
+                       d3_power_consolidation, d4_coercion_cooperation,
+                       d5_fear_trust, d6_democratization, d7_systemic_design,
+                       relevance_rationale
+                FROM articles
+                WHERE summary IS NOT NULL
+                    AND scored_at >= ?
+                    AND scored_at < ?
+                ORDER BY composite_score DESC NULLS LAST, pub_date DESC
+            """, (since_datetime.isoformat(), until_datetime.isoformat()))
+        else:
+            cursor.execute("""
+                SELECT id, title, url, source, pub_date, summary, keywords, content,
+                       composite_score, relevance_tier, convergence_flag,
+                       d1_attention_economy, d2_data_sovereignty,
+                       d3_power_consolidation, d4_coercion_cooperation,
+                       d5_fear_trust, d6_democratization, d7_systemic_design,
+                       relevance_rationale
+                FROM articles
+                WHERE summary IS NOT NULL
+                    AND scored_at >= ?
+                ORDER BY composite_score DESC NULLS LAST, pub_date DESC
+            """, (since_datetime.isoformat(),))
         return [dict(row) for row in cursor.fetchall()]
 
 

@@ -1012,12 +1012,17 @@ def _analyze_single_article(
     return analysis
 
 
-def generate_digest() -> dict:
+def generate_digest(target_date=None) -> dict:
     """
-    Generate today's daily digest using a multi-call pipeline.
+    Generate a daily digest using a multi-call pipeline.
+
+    Args:
+        target_date: Optional date string (YYYY-MM-DD) to generate a digest for.
+                     Uses a 6 AM–6 AM window (scored_at between target_date 06:00
+                     and target_date+1 06:00). If None, uses the last 24 hours.
 
     Pipeline:
-    1. Get scored articles from last 24 hours (ordered by composite score)
+    1. Get scored articles from the time window (ordered by composite score)
     2. Group by tier with proportional content budgets
     3. For each T1/T2 article: focused LLM call for individual analysis
     4. Synthesis LLM call: Big Picture + Patterns & Signals + What Deserves Attention
@@ -1039,16 +1044,28 @@ def generate_digest() -> dict:
     model = settings.get("ollama_model", "llama3.2")
     temperature = float(settings.get("ollama_temperature", 0.3))
 
-    # Get scored articles from last 24 hours
-    yesterday = datetime.utcnow() - timedelta(hours=24)
-    articles = get_articles_since_scored(yesterday)
+    # Determine time window
+    if target_date:
+        from datetime import date as date_type
+        if isinstance(target_date, str):
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        else:
+            target_dt = datetime.combine(target_date, datetime.min.time())
+        window_start = target_dt.replace(hour=6, minute=0, second=0)
+        digest_date_str = target_date if isinstance(target_date, str) else target_date.isoformat()
+    else:
+        window_start = datetime.utcnow() - timedelta(hours=24)
+        digest_date_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    window_end = window_start + timedelta(hours=24) if target_date else None
+    articles = get_articles_since_scored(window_start, window_end)
+
     result["article_count"] = len(articles)
 
     if not articles:
         result["content"] = "No articles from the past 24 hours. The silence itself is notable."
         result["success"] = True
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        save_digest(today, result["content"], 0)
+        save_digest(digest_date_str, result["content"], 0)
         return result
 
     # Build tiered article sections
@@ -1187,11 +1204,10 @@ def generate_digest() -> dict:
         result["success"] = True
 
         # Save to database
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        save_digest(today, content, len(articles))
+        save_digest(digest_date_str, content, len(articles))
 
         logger.info(
-            f"Generated digest for {today} with {len(articles)} articles "
+            f"Generated digest for {digest_date_str} with {len(articles)} articles "
             f"({len(included)} included, {len(article_analyses)} deep dives)"
         )
         return result
