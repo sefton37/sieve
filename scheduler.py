@@ -79,7 +79,12 @@ def _run_scheduled_ingest():
 
 
 def _run_scheduled_digest():
-    """Execute scheduled daily digest generation."""
+    """Execute scheduled digest generation for all days that need it.
+
+    Checks every day with scored articles and generates a digest if:
+    - No digest exists for that day, or
+    - New articles were scored after the existing digest was created.
+    """
     global _digest_running
 
     # Skip if already running
@@ -90,15 +95,27 @@ def _run_scheduled_digest():
         _digest_running = True
 
     try:
+        from db import get_days_needing_digest
         from digest import generate_digest
 
-        logger.info("Running scheduled digest generation")
-        result = generate_digest()
+        days = get_days_needing_digest()
 
-        if result.get("success"):
-            logger.info(f"Scheduled digest complete: {result['article_count']} articles")
-        else:
-            logger.error(f"Scheduled digest failed: {result.get('error')}")
+        if not days:
+            logger.info("Scheduled digest: all days up to date")
+            return
+
+        logger.info(f"Scheduled digest: {len(days)} day(s) need digests: {days}")
+
+        for day in days:
+            logger.info(f"Generating digest for {day}")
+            result = generate_digest(target_date=day)
+
+            if result.get("success"):
+                logger.info(
+                    f"Digest for {day} complete: {result['article_count']} articles"
+                )
+            else:
+                logger.error(f"Digest for {day} failed: {result.get('error')}")
 
     except Exception as e:
         logger.error(f"Scheduled digest error: {e}")
@@ -132,12 +149,9 @@ def start_scheduler(app=None):
     if auto_ingest == "true" and schedule:
         schedule_ingest(schedule)
 
-    # Set up daily digest if enabled
-    auto_digest = get_setting("auto_digest")
-    digest_schedule = get_setting("digest_schedule")
-
-    if auto_digest == "true" and digest_schedule:
-        schedule_digest(digest_schedule)
+    # Set up daily digest (always enabled, 1 hour after last scoring batch)
+    digest_schedule = get_setting("digest_schedule") or "0 20 * * *"
+    schedule_digest(digest_schedule)
 
 
 def schedule_pipeline(cron_expr):

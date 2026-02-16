@@ -792,6 +792,54 @@ def get_digest(digest_date):
         return dict(row) if row else None
 
 
+def get_days_needing_digest():
+    """Find days that need a digest generated or regenerated.
+
+    Returns a sorted list of date strings (YYYY-MM-DD) for days where:
+    - Articles were scored but no digest exists, or
+    - New articles were scored after the existing digest was created.
+
+    Uses 6 AM–6 AM windows matching the digest generation convention.
+    Skips the initial bulk-import day (2026-02-03).
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Get all days that have scored articles (excluding bulk import)
+        cursor.execute("""
+            SELECT DATE(scored_at) as day,
+                   COUNT(*) as article_count,
+                   MAX(scored_at) as last_scored
+            FROM articles
+            WHERE scored_at IS NOT NULL
+                AND DATE(scored_at) >= '2026-02-04'
+            GROUP BY DATE(scored_at)
+            ORDER BY day
+        """)
+        scored_days = {row["day"]: dict(row) for row in cursor.fetchall()}
+
+        # Get all existing digests
+        cursor.execute("""
+            SELECT digest_date, article_count, created_at
+            FROM digests
+        """)
+        digests = {row["digest_date"]: dict(row) for row in cursor.fetchall()}
+
+    needs_digest = []
+    for day, info in scored_days.items():
+        existing = digests.get(day)
+        if not existing:
+            # No digest for this day
+            needs_digest.append(day)
+        elif info["article_count"] != existing["article_count"]:
+            # Article count changed — new articles scored since digest
+            needs_digest.append(day)
+        elif info["last_scored"] > existing["created_at"]:
+            # Articles scored after digest was created
+            needs_digest.append(day)
+
+    return sorted(needs_digest)
+
+
 def get_recent_digests(limit=7):
     """Get recent digests."""
     with get_db() as conn:
