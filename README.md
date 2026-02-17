@@ -169,8 +169,8 @@ INSERT INTO settings (key, value) VALUES
     ('jsonl_path', '/home/kellogg/data/rssfeed.jsonl'),
     ('ingest_schedule', ''),
     ('auto_ingest', 'false'),
-    ('auto_digest', 'false'),
-    ('digest_schedule', '0 6 * * *');
+    ('auto_digest', 'true'),
+    ('digest_schedule', '0 20 * * *');
 ```
 
 ## File Structure
@@ -245,7 +245,9 @@ Sieve/
 - Articles grouped by tier with proportional depth: T1 gets deep dives, T2 gets substantive coverage, T3 feeds pattern sections, T4 mentioned in passing, T5 excluded
 - Dimensional profile shows which analytical themes dominate the day
 - Convergence points highlighted for cross-dimensional intersection stories
-- Generate on demand or via scheduled job (default: 6 AM)
+- Generate on demand or via scheduled job (default: 20:00 UTC)
+- Review-and-revise loop validates quotes and attribution, auto-corrects up to 3 times
+- Backfills missing days and regenerates stale digests automatically
 - Markdown rendering with source links
 - Archive of recent digests (last 14)
 
@@ -381,7 +383,7 @@ sudo systemctl enable --now sieve
    - Detects and links story threads from entity overlap + embedding similarity
 3. **You browse** → filter articles by tier/score, sort by relevance, read summaries
 4. **You chat** → ask questions, get RAG-powered answers grounded in your articles
-5. **Daily digest** → generated at 6 AM (configurable), score-aware narrative briefing in Abend voice with tiered depth
+5. **Daily digest** → generated at 20:00 UTC (configurable), 1 hour after last scoring batch. Score-aware narrative briefing in Abend voice with tiered depth. Automatically backfills missing days and regenerates stale digests
 6. **You review scores** → check distribution dashboard, see which dimensions dominate
 
 ## Scheduling
@@ -389,7 +391,7 @@ sudo systemctl enable --now sieve
 | Job | Default Schedule | Purpose |
 |-----|-----------------|---------|
 | Pipeline | `0 * * * *` (hourly) | Full 8-stage cycle: ingest → compress → summarize → embed → score → entities → topics → threads |
-| Digest | `0 6 * * *` (6 AM) | Generate daily briefing (if auto_digest enabled) |
+| Digest | `0 20 * * *` (20:00 UTC) | Generate/backfill daily briefings, then deploy Rogue Routine site |
 | Ingest | Configurable | Legacy standalone ingestion (if auto_ingest enabled) |
 
 ## Model Recommendations

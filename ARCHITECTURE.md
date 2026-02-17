@@ -350,6 +350,11 @@ Narrate the thread:
 - Dimensional profile shows which themes dominate the day (with elevation flags)
 - Convergence points explicitly called out for cross-dimensional intersection
 - Post-processed to ensure hyperlinks and source attribution
+- Review-and-revise loop (up to 3 iterations) validates quotes against source text, checks attribution correctness, removes fabrications
+- Source names normalized to canonical casing during ingestion
+- Deep dive headers show publication name; prompts require naming sources (never "this article")
+- Scheduled at 20:00 UTC (1 hour after last scoring batch); backfills missing days and regenerates stale digests via `get_days_needing_digest()`
+- Deploys Rogue Routine static site after generation
 - Markdown rendering in web UI
 
 #### Weekly Thread Report
@@ -408,7 +413,7 @@ Store enriched article
 | Workflow | Schedule | Purpose | Status |
 |----------|----------|---------|--------|
 | Full pipeline | Hourly (`0 * * * *`) | Ingest → compress → summarize → embed → score → entities → topics → threads | ✅ |
-| Daily digest | 6 AM (`0 6 * * *`) | Generate score-aware narrative briefing | ✅ |
+| Daily digest | 20:00 UTC (`0 20 * * *`) | Generate/backfill score-aware briefings + deploy Rogue Routine | ✅ |
 | Legacy ingest | Configurable cron | Standalone ingestion only | ✅ |
 | Thread synthesis | Weekly | Generate thread narratives | Planned |
 | Cleanup | Monthly | Archive old articles, prune orphan threads | Planned |
@@ -496,7 +501,7 @@ Summary of what's built vs. the full vision as of the current codebase:
 | 3: Enrichment | Score distribution dashboard | ✅ |
 | 3: Enrichment | Entity extraction (5 categories, LLM-based) | ✅ |
 | 3: Enrichment | Topic classification (17-topic taxonomy, LLM-based) | ✅ |
-| 4: Synthesis | Score-aware daily digest (Abend voice, tiered depth) | ✅ |
+| 4: Synthesis | Score-aware daily digest (Abend voice, tiered depth, review-and-revise validation) | ✅ |
 | 4: Synthesis | RAG chat over corpus | ✅ |
 | 4: Synthesis | Contextualized summarization (related article context) | ✅ |
 | 4: Synthesis | Thread detection (embedding similarity + entity overlap) | ✅ |
