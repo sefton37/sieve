@@ -1189,15 +1189,73 @@ def generate_digest(target_date=None) -> dict:
         content = strip_unverifiable_quotes(content, included)
         content = inject_article_links(content, included)
 
-        # Final review for logging
-        final_review = review_digest(content, included)
-        if final_review["passed"]:
-            logger.info("Digest final review: all checks passed")
-        else:
+        # Review-and-revise loop: fix issues the LLM introduced
+        for revision_round in range(MAX_REVIEW_ITERATIONS):
+            review = review_digest(content, included)
+
+            if review["passed"]:
+                logger.info(
+                    f"Digest review passed"
+                    + (f" after {revision_round} revision(s)"
+                       if revision_round > 0 else "")
+                )
+                break
+
             logger.info(
-                f"Digest final review: {final_review['issue_count']} "
-                f"remaining issues: "
-                + "; ".join(final_review["issues"][:3])
+                f"Digest review round {revision_round + 1}: "
+                f"{review['issue_count']} issue(s) — "
+                + "; ".join(review["issues"][:3])
+            )
+
+            # Build compact article reference for the revision prompt
+            article_data_parts = []
+            for a in included:
+                excerpt = (a.get("content") or "")[:2000]
+                article_data_parts.append(
+                    f'Title: "{a.get("title", "")}"\n'
+                    f'Source: {a.get("source", "Unknown")}\n'
+                    f'URL: {a.get("url", "")}\n'
+                    f'Excerpt: {excerpt}\n'
+                )
+            article_data = "\n---\n".join(article_data_parts)
+
+            # Strip the Sources footer before sending to LLM (it gets re-added)
+            content_for_revision = re.sub(
+                r'\n---\n## Sources\n.*', '', content, flags=re.DOTALL
+            )
+
+            revision_prompt = REVIEW_REVISION_PROMPT.format(
+                issues="\n".join(f"- {i}" for i in review["issues"]),
+                content=content_for_revision,
+                article_data=article_data,
+            )
+
+            revision_tokens = len(revision_prompt) // 4
+            revision_ctx = max(32768, ((revision_tokens + 3000) // 4096 + 1) * 4096)
+
+            revised = _call_ollama_streaming(
+                system_prompt=revision_prompt,
+                user_prompt="Fix the issues listed above. Output the corrected briefing.",
+                model=model,
+                temperature=temperature,
+                num_ctx=revision_ctx,
+                num_predict=4096,
+            )
+
+            if revised and revised.strip():
+                content = strip_unverifiable_quotes(revised, included)
+                content = inject_article_links(content, included)
+                logger.info(f"Revision {revision_round + 1} applied")
+            else:
+                logger.warning(f"Revision {revision_round + 1} returned empty, keeping previous")
+                break
+        else:
+            # Exhausted all revision rounds
+            final = review_digest(content, included)
+            logger.warning(
+                f"Digest review: {final['issue_count']} issue(s) remain "
+                f"after {MAX_REVIEW_ITERATIONS} revisions: "
+                + "; ".join(final["issues"][:3])
             )
 
         result["content"] = content
