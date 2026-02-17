@@ -1,6 +1,7 @@
 """Scheduler for Sieve - APScheduler background jobs for automated pipeline."""
 
 import logging
+import subprocess
 import threading
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -123,6 +124,36 @@ def _run_scheduled_digest():
     finally:
         with _digest_lock:
             _digest_running = False
+
+    # Deploy Rogue Routine site after digest run
+    _deploy_rogue_routine()
+
+
+def _deploy_rogue_routine():
+    """Deploy the Rogue Routine static site after pipeline/digest completion.
+
+    Runs `make deploy` in the rogue_routine project, which exports digests
+    and articles from the Sieve database, builds the Hugo site, and rsyncs
+    to the VPS. Failures are logged but never block Sieve's pipeline.
+    """
+    try:
+        logger.info("Deploying Rogue Routine site")
+        result = subprocess.run(
+            ["make", "deploy"],
+            cwd="/home/kellogg/dev/rogue_routine",
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("Rogue Routine deploy succeeded")
+        else:
+            logger.error(
+                f"Rogue Routine deploy failed (exit {result.returncode}): "
+                f"{result.stderr[-500:]}"
+            )
+    except Exception as e:
+        logger.error(f"Rogue Routine deploy error: {e}")
 
 
 def start_scheduler(app=None):
