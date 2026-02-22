@@ -1,6 +1,7 @@
 """Flask application for Sieve - News intelligence web interface."""
 
 import logging
+import os
 import threading
 from math import ceil
 
@@ -1031,8 +1032,13 @@ if __name__ == "__main__":
     init_db()
     logger.info("Database initialized")
 
-    # Start scheduler
-    start_scheduler(app)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
 
-    # Run Flask development server
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=True)
+    # Start scheduler in the main worker only. When the Werkzeug reloader
+    # is active (debug mode) it spawns a child that re-runs this block;
+    # only start the scheduler in that child (WERKZEUG_RUN_MAIN) to avoid
+    # running every job twice. Without the reloader, start unconditionally.
+    if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_scheduler(app)
+
+    app.run(host="0.0.0.0", port=5000, debug=debug, use_reloader=debug)

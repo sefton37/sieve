@@ -21,7 +21,7 @@ DEFAULT_SETTINGS = {
     "auto_ingest": "false",
     "ollama_embed_model": "nomic-embed-text",
     "auto_digest": "true",
-    "digest_schedule": "0 20 * * *",
+    "digest_schedule": "0 6,17 * * *",
 }
 
 

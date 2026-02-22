@@ -398,6 +398,74 @@ def inject_quote_attributions(content: str, articles: list[dict]) -> str:
     return '\n'.join(result)
 
 
+def strip_new_blockquotes(
+    pre_revision: str, post_revision: str, articles: list[dict]
+) -> str:
+    """Remove blockquotes that were introduced during revision.
+
+    Compares blockquotes in the post-revision content against those present
+    in the pre-revision content. Any blockquote whose normalized text wasn't
+    in the pre-revision version is stripped — it was added by the LLM during
+    rewrite and is likely formatting drift, not a real quote.
+
+    This is the first line of defense; strip_unverifiable_quotes provides a
+    second pass checking against actual article content.
+    """
+    pre_blocks = _extract_quote_blocks(pre_revision)
+    pre_texts = {b['text'].lower().strip() for b in pre_blocks if b['text'].strip()}
+
+    lines = post_revision.split('\n')
+    result = []
+    i = 0
+    removed = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        if line.strip().startswith('>'):
+            # Collect consecutive blockquote lines
+            quote_lines = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                quote_lines.append(lines[i])
+                i += 1
+
+            # Build normalized text for comparison
+            quote_text = ' '.join(
+                l.strip().lstrip('>').strip() for l in quote_lines
+            )
+            normalized = quote_text.strip().strip('""\u201c\u201d\'').strip().lower()
+
+            if normalized and normalized not in pre_texts:
+                # New blockquote not present before revision — strip it
+                removed += 1
+                logger.info(
+                    f"Stripped NEW blockquote not in pre-revision content: "
+                    f"{quote_text[:80]!r}..."
+                )
+                # Skip trailing blank lines
+                while i < len(lines) and lines[i].strip() == '':
+                    i += 1
+                # Skip attribution line if present
+                if i < len(lines) and _has_attribution_line(lines[i]):
+                    i += 1
+                # Skip trailing blank line after attribution
+                if i < len(lines) and lines[i].strip() == '':
+                    i += 1
+            else:
+                # Blockquote existed before revision — keep it
+                result.extend(quote_lines)
+        else:
+            result.append(line)
+            i += 1
+
+    if removed:
+        logger.info(
+            f"Stripped {removed} new blockquote(s) introduced during revision"
+        )
+
+    return '\n'.join(result)
+
+
 def strip_unverifiable_quotes(content: str, articles: list[dict]) -> str:
     """Remove blockquotes that can't be verified against article content.
 
@@ -610,6 +678,7 @@ REVIEW_REVISION_PROMPT = """You are Abend. You previously wrote a daily briefing
 5. If you cannot find a real quote for an article, remove the quote and analyze without one
 6. Patterns & Signals must make specific observations about today's articles, not generic statements
 7. Do not add new sections or duplicate existing ones
+8. Do NOT wrap non-quote text in blockquote formatting (>). Blockquotes are ONLY for verbatim quotes copied from article excerpts. If text was not in a blockquote in your previous briefing, it must not be in a blockquote now.
 
 Write the corrected briefing now."""
 
@@ -1243,6 +1312,7 @@ def generate_digest(target_date=None) -> dict:
             )
 
             if revised and revised.strip():
+                revised = strip_new_blockquotes(content_for_revision, revised, included)
                 content = strip_unverifiable_quotes(revised, included)
                 content = inject_article_links(content, included)
                 logger.info(f"Revision {revision_round + 1} applied")
