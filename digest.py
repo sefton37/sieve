@@ -367,9 +367,6 @@ def inject_quote_attributions(content: str, articles: list[dict]) -> str:
                 quote_lines.append(lines[i])
                 i += 1
 
-            # Add the blockquote lines to result
-            result.extend(quote_lines)
-
             # Check if the next non-empty line is already an attribution
             next_idx = i
             while next_idx < len(lines) and lines[next_idx].strip() == '':
@@ -378,6 +375,20 @@ def inject_quote_attributions(content: str, articles: list[dict]) -> str:
             has_attr = (
                 next_idx < len(lines) and _has_attribution_line(lines[next_idx])
             )
+
+            if has_attr and quote_lines:
+                # Strip redundant inline attribution from last blockquote line
+                # e.g. '> "quote text" — Source Name' -> '> "quote text"'
+                last = quote_lines[-1]
+                cleaned = re.sub(
+                    r'\s*[\u2014\u2013]\s*(?!\[)[A-Z][\w\s&\'\-\.]+\s*$',
+                    '', last,
+                )
+                if cleaned != last:
+                    quote_lines[-1] = cleaned
+
+            # Add the blockquote lines to result
+            result.extend(quote_lines)
 
             if not has_attr:
                 # Extract the quote text from blockquote lines
