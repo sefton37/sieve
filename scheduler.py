@@ -1,9 +1,22 @@
-"""Scheduler for Sieve - APScheduler background jobs for automated pipeline."""
+"""Scheduler for Sieve - APScheduler background jobs for automated pipeline.
+
+Resilience features:
+- misfire_grace_time: Jobs delayed up to 120s still execute (handles load spikes)
+- coalesce: Multiple missed fires collapse into a single run
+- Event listeners: Log all job errors, misses, and scheduler crashes
+- Watchdog thread: Checks scheduler health every 5 minutes, restarts if dead
+"""
 
 import logging
 import subprocess
 import threading
 
+from apscheduler.events import (
+    EVENT_JOB_ERROR,
+    EVENT_JOB_EXECUTED,
+    EVENT_JOB_MISSED,
+    EVENT_SCHEDULER_SHUTDOWN,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -11,7 +24,13 @@ from db import get_setting
 
 logger = logging.getLogger(__name__)
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(
+    job_defaults={
+        "misfire_grace_time": 120,
+        "coalesce": True,
+        "max_instances": 1,
+    },
+)
 INGEST_JOB_ID = "auto_ingest"  # Legacy, kept for compatibility
 PIPELINE_JOB_ID = "hourly_pipeline"
 DIGEST_JOB_ID = "daily_digest"
@@ -23,6 +42,11 @@ _pipeline_running = False
 # Track if digest is currently running
 _digest_lock = threading.Lock()
 _digest_running = False
+
+# Watchdog state
+_watchdog_thread = None
+_watchdog_stop = threading.Event()
+_app_ref = None  # Stored so watchdog can restart scheduler with same config
 
 
 def is_pipeline_running():
@@ -156,33 +180,104 @@ def _deploy_rogue_routine():
         logger.error(f"Rogue Routine deploy error: {e}")
 
 
+def _on_job_executed(event):
+    """Log successful job execution."""
+    logger.debug(f"Job {event.job_id} executed successfully")
+
+
+def _on_job_error(event):
+    """Log job execution errors — these would otherwise be swallowed."""
+    logger.error(
+        f"Job {event.job_id} raised an exception: {event.exception}\n"
+        f"{event.traceback}"
+    )
+
+
+def _on_job_missed(event):
+    """Log misfired jobs — these indicate scheduler health issues."""
+    logger.warning(
+        f"Job {event.job_id} missed its scheduled run at {event.scheduled_run_time}"
+    )
+
+
+def _on_scheduler_shutdown(event):
+    """Log unexpected scheduler shutdown."""
+    logger.error("APScheduler shut down unexpectedly — watchdog will attempt restart")
+
+
+def _watchdog_loop():
+    """Check scheduler health every 5 minutes. Restart if dead."""
+    global _app_ref
+    while not _watchdog_stop.wait(timeout=300):
+        if not scheduler.running:
+            logger.error("Watchdog: scheduler not running — restarting")
+            try:
+                _start_scheduler_jobs()
+            except Exception as e:
+                logger.error(f"Watchdog: failed to restart scheduler: {e}")
+        else:
+            jobs = scheduler.get_jobs()
+            if not jobs:
+                logger.warning("Watchdog: scheduler running but has 0 jobs — re-adding")
+                try:
+                    _add_all_jobs()
+                except Exception as e:
+                    logger.error(f"Watchdog: failed to re-add jobs: {e}")
+
+
+def _add_all_jobs():
+    """Add all standard jobs to the scheduler."""
+    schedule_pipeline("0 * * * *")
+
+    auto_ingest = get_setting("auto_ingest")
+    ingest_schedule = get_setting("ingest_schedule")
+    if auto_ingest == "true" and ingest_schedule:
+        schedule_ingest(ingest_schedule)
+
+    digest_schedule = get_setting("digest_schedule") or "0 20 * * *"
+    schedule_digest(digest_schedule)
+
+
+def _start_scheduler_jobs():
+    """Start the scheduler and add all jobs. Used by both start_scheduler and watchdog."""
+    if not scheduler.running:
+        scheduler.start()
+        logger.info("Scheduler started")
+    _add_all_jobs()
+
+
 def start_scheduler(app=None):
     """
-    Initialize and start the background scheduler.
+    Initialize and start the background scheduler with resilience features.
+
+    Sets up event listeners for error visibility, configures all jobs,
+    and starts a watchdog thread that restarts the scheduler if it dies.
 
     Args:
         app: Optional Flask app for context (not currently used)
     """
+    global _watchdog_thread, _app_ref
+    _app_ref = app
+
     if scheduler.running:
         logger.info("Scheduler already running")
         return
 
-    scheduler.start()
-    logger.info("Scheduler started")
+    # Event listeners for visibility into scheduler health
+    scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+    scheduler.add_listener(_on_job_missed, EVENT_JOB_MISSED)
+    scheduler.add_listener(_on_scheduler_shutdown, EVENT_SCHEDULER_SHUTDOWN)
 
-    # Set up hourly pipeline (always enabled)
-    schedule_pipeline("0 * * * *")  # Every hour at minute 0
+    _start_scheduler_jobs()
 
-    # Set up legacy auto-ingest if enabled (for backwards compatibility)
-    auto_ingest = get_setting("auto_ingest")
-    schedule = get_setting("ingest_schedule")
-
-    if auto_ingest == "true" and schedule:
-        schedule_ingest(schedule)
-
-    # Set up daily digest (always enabled, 1 hour after last scoring batch)
-    digest_schedule = get_setting("digest_schedule") or "0 20 * * *"
-    schedule_digest(digest_schedule)
+    # Start watchdog thread to detect and recover from scheduler death
+    _watchdog_stop.clear()
+    _watchdog_thread = threading.Thread(
+        target=_watchdog_loop, name="sieve-scheduler-watchdog", daemon=True
+    )
+    _watchdog_thread.start()
+    logger.info("Scheduler watchdog started (5-minute health check interval)")
 
 
 def schedule_pipeline(cron_expr):
@@ -275,10 +370,11 @@ def schedule_ingest(cron_expr):
 
 
 def stop_scheduler():
-    """Stop the background scheduler."""
+    """Stop the background scheduler and watchdog."""
+    _watchdog_stop.set()
     if scheduler.running:
         scheduler.shutdown(wait=False)
-        logger.info("Scheduler stopped")
+        logger.info("Scheduler and watchdog stopped")
 
 
 def remove_ingest_job():

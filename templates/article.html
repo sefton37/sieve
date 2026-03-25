@@ -95,7 +95,7 @@
     <section>
         <h2>Full Content</h2>
         <div class="article-content">
-            {{ article.content|safe if article.content else "No content available." }}
+            {{ article.content|sanitize_html if article.content else "No content available." }}
         </div>
     </section>
 

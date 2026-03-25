@@ -1,5 +1,7 @@
 flask
+flask-wtf
 requests
 apscheduler
 python-dateutil
 sqlite-vec
+nh3

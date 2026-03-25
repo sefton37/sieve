@@ -13,8 +13,11 @@
 
     <!-- Custom styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- CSRF token for non-HTMX JS use -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
-<body>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
     <header class="container">
         <nav>
             <ul>

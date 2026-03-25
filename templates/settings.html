@@ -119,6 +119,7 @@
 
 <!-- Settings Form -->
 <form method="post" action="{{ url_for('update_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- Ollama Settings -->
     <section>

@@ -22,6 +22,7 @@ DEFAULT_SETTINGS = {
     "ollama_embed_model": "nomic-embed-text",
     "auto_digest": "true",
     "digest_schedule": "0 6,17 * * *",
+    "digest_prose_model": "",
 }
 
 
@@ -106,6 +107,18 @@ def init_db():
                 content TEXT NOT NULL,
                 article_count INTEGER,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Digest-articles junction table: tracks which articles appeared in each digest
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS digest_articles (
+                digest_id INTEGER NOT NULL,
+                article_id INTEGER NOT NULL,
+                tier INTEGER NOT NULL,
+                PRIMARY KEY (digest_id, article_id),
+                FOREIGN KEY (digest_id) REFERENCES digests(id),
+                FOREIGN KEY (article_id) REFERENCES articles(id)
             )
         """)
 
@@ -767,16 +780,63 @@ def get_articles_since_scored(since_datetime, until_datetime=None):
         return [dict(row) for row in cursor.fetchall()]
 
 
-def save_digest(digest_date, content, article_count):
-    """Save a daily digest."""
+def save_digest(digest_date, content, article_count, article_tiers=None):
+    """Save a daily digest and optionally record which articles were featured.
+
+    Args:
+        article_tiers: Optional list of (article_id, tier) tuples to record
+                       in the digest_articles junction table.
+    """
     with get_db() as conn:
         cursor = conn.cursor()
+
+        # Clean up old junction rows before INSERT OR REPLACE deletes the
+        # parent digest row (REPLACE = DELETE + INSERT, which orphans the
+        # old digest_articles rows since the old digest_id disappears).
+        cursor.execute(
+            "SELECT id FROM digests WHERE digest_date = ?", (digest_date,)
+        )
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                "DELETE FROM digest_articles WHERE digest_id = ?",
+                (existing["id"],),
+            )
+
         cursor.execute("""
             INSERT OR REPLACE INTO digests (digest_date, content, article_count, created_at)
             VALUES (?, ?, ?, ?)
         """, (digest_date, content, article_count, datetime.utcnow().isoformat()))
+        digest_id = cursor.lastrowid
+
+        if article_tiers:
+            cursor.executemany(
+                "INSERT INTO digest_articles (digest_id, article_id, tier) VALUES (?, ?, ?)",
+                [(digest_id, aid, tier) for aid, tier in article_tiers],
+            )
+
         conn.commit()
-        return cursor.lastrowid
+        return digest_id
+
+
+def get_recently_featured_article_ids(days=3):
+    """Return set of article IDs that appeared as T1 or T2 in recent digests.
+
+    Only looks back `days` calendar days. Excludes today's date.
+    """
+    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT da.article_id
+            FROM digest_articles da
+            JOIN digests d ON da.digest_id = d.id
+            WHERE da.tier <= 2
+              AND d.digest_date >= ?
+              AND d.digest_date < ?
+        """, (cutoff, today))
+        return {row[0] for row in cursor.fetchall()}
 
 
 def get_digest(digest_date):

@@ -2,11 +2,15 @@
 
 import logging
 import os
+import secrets
 import threading
 from math import ceil
 
+import nh3
 import requests
 from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask_wtf.csrf import CSRFProtect
+from markupsafe import Markup
 
 from db import (
     clear_chat_history,
@@ -54,6 +58,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
+app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # 1 hour
+csrf = CSRFProtect(app)
 
 # Job state tracking (in-memory, single user)
 job_state = {
@@ -1004,6 +1011,20 @@ def trigger_digest():
     return jsonify({"status": "started", "type": "digest"})
 
 
+@app.template_filter("sanitize_html")
+def sanitize_html_filter(s):
+    """Sanitize HTML from untrusted sources (e.g., RSS feed content) via allowlist."""
+    if not s:
+        return s
+    return Markup(nh3.clean(
+        s,
+        tags={"p", "br", "strong", "em", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+              "blockquote", "pre", "code", "img", "table", "thead", "tbody", "tr", "th", "td",
+              "span", "div", "hr", "figure", "figcaption", "sup", "sub"},
+        attributes={"a": {"href", "title"}, "img": {"src", "alt", "title"}},
+    ))
+
+
 @app.template_filter("truncate_content")
 def truncate_content(content, length=200):
     """Truncate content for display."""
@@ -1041,4 +1062,4 @@ if __name__ == "__main__":
     if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         start_scheduler(app)
 
-    app.run(host="0.0.0.0", port=5000, debug=debug, use_reloader=debug)
+    app.run(host="127.0.0.1", port=5000, debug=debug, use_reloader=debug)

@@ -1,5 +1,37 @@
 /* Sieve - Minimal style overrides for Pico CSS */
 
+/* === Dusk & Stone (dark default) === */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pico-primary: #d4a856;
+    --pico-primary-hover: #e0be6a;
+    --pico-background-color: #0f1114;
+    --pico-card-background-color: #1a1b1f;
+    --pico-card-sectioning-background-color: #242629;
+    --pico-border-color: #2e3035;
+    --pico-color: #f0ece4;
+    --pico-muted-color: #8a8d96;
+    --pico-secondary: #5e7a94;
+    --pico-secondary-hover: #7a9ab4;
+  }
+}
+
+/* === High Desert (light default) === */
+@media (prefers-color-scheme: light) {
+  :root {
+    --pico-primary: #8a6c20;
+    --pico-primary-hover: #6d5518;
+    --pico-background-color: #f5f6f9;
+    --pico-card-background-color: #ffffff;
+    --pico-card-sectioning-background-color: #eaecf1;
+    --pico-border-color: #d8dbe2;
+    --pico-color: #14161c;
+    --pico-muted-color: #6b6f7a;
+    --pico-secondary: #456480;
+    --pico-secondary-hover: #345068;
+  }
+}
+
 /* Article cards in list view */
 .article-grid {
     display: flex;
@@ -185,8 +217,8 @@
 .digest-card {
     padding: 1.25rem;
     margin-bottom: 1.25rem;
-    border-left: 4px solid #5b7a9d;
-    background: #faf8f5;
+    border-left: 4px solid var(--pico-secondary);
+    background: var(--pico-card-background-color);
     border-radius: 4px;
 }
 
@@ -199,19 +231,19 @@
 }
 
 .digest-card header strong {
-    color: #3d5a73;
+    color: var(--pico-color);
 }
 
 .digest-content {
     line-height: 1.55;
-    color: #2c3e50;
+    color: var(--pico-color);
 }
 
 .digest-card footer {
     margin-top: 1rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #d4cfc7;
-    color: #7a8a97;
+    border-top: 1px solid var(--pico-border-color);
+    color: var(--pico-muted-color);
 }
 
 /* Score Distribution */
@@ -234,7 +266,7 @@
 .histogram-bar {
     width: 100%;
     min-width: 8px;
-    background: #1976d2;
+    background: var(--pico-primary);
     border-radius: 2px 2px 0 0;
     position: relative;
     transition: height 0.3s;
@@ -264,7 +296,7 @@
 
 .dim-bar {
     height: 16px;
-    background: #1976d2;
+    background: var(--pico-primary);
     border-radius: 3px;
     display: inline-block;
     min-width: 2px;
