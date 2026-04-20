@@ -6,8 +6,8 @@ After 34 published digests, a formulaic convergence has hardened across every ou
 
 - **Opening sentence**: Nearly always "Today's [news/top stories] reveal[s] a complex [interplay/struggle/web]..."
 - **Big Picture**: One paragraph, same rhetorical structure — name the threads, label the tension, gesture at the big picture
-- **Deep Dives**: Every article follows the identical 5-step arc: claim → evidence → dimensional framing → quote → significance
-- **Patterns & Signals**: Flat bullet list using the same dimensional vocabulary regardless of what the day's content actually suggests
+- **Deep Dives**: Every article follows the identical 5-step arc: claim → evidence → domain framing → quote → significance
+- **Patterns & Signals**: Flat bullet list using the same domain vocabulary regardless of what the day's content actually suggests
 - **What Deserves Attention**: Always 2-3 numbered items in the same order and register
 
 Root causes, confirmed from the code:
@@ -46,7 +46,7 @@ Introduce a `DigestStyle` dataclass that is selected once per generation run and
 
 ## Approach B: Content-Driven Style Selection
 
-Analyze the day's scored articles before generation and select a style based on what the data actually shows: if all high-scoring articles are from a single domain (e.g., government surveillance), use the "single-thread" style; if scores are spread across many dimensions, use the "fragmented landscape" style; if there are many Tier 1 articles, use a different depth distribution.
+Analyze the day's scored articles before generation and select a style based on what the data actually shows: if all high-scoring articles are from a single domain (e.g., government surveillance), use the "single-thread" style; if scores are spread across many domains, use the "fragmented landscape" style; if there are many Tier 1 articles, use a different depth distribution.
 
 **Why it was set aside:**
 - Requires reading and categorizing articles before generation, adding latency and complexity

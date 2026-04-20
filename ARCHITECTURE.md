@@ -98,7 +98,7 @@ CREATE TABLE articles (
     summarized_at TEXT,
     embedding BLOB,                  -- 768-dim float vector (struct-packed)
     embedded_at TEXT,
-    -- Relevance scoring (No One Rubric, 7 dimensions)
+    -- Relevance scoring (No One Rubric, 7 domains)
     d1_attention_economy INTEGER,    -- 0-3
     d2_data_sovereignty INTEGER,     -- 0-3
     d3_power_consolidation INTEGER,  -- 0-3
@@ -200,9 +200,9 @@ Credibility comes from knowing your limits.
 
 #### 3b: Relevance Scoring ✅ Implemented
 
-**Rubric:** No One Relevancy Rubric (`no_one_relevancy_rubric.md`) — 7 analytical dimensions examining power, attention, autonomy, and cooperation across technology, economics, governance, and culture.
+**Rubric:** No One Relevancy Rubric (`no_one_relevancy_rubric.md`) — 7 analytical domains examining power, attention, autonomy, and cooperation across technology, economics, governance, and culture.
 
-**Dimensions (each scored 0-3):**
+**Domains (each scored 0-3):**
 - D1: Attention Economy — how attention is captured, monetized, or defended
 - D2: Data Sovereignty — ownership and control of personal data and digital identity
 - D3: Power Consolidation — concentration or distribution of power
@@ -211,19 +211,19 @@ Credibility comes from knowing your limits.
 - D6: Democratization — distribution or restriction of access to tools and knowledge
 - D7: Systemic Design — structural incentives producing outcomes
 
-**Scoring split:** LLM provides qualitative dimension scores (0-3 each) + rationale. Python computes composite (sum, 0-21), tier (deterministic boundaries), and convergence flag deterministically.
+**Scoring split:** LLM provides qualitative domain scores (0-3 each) + rationale. Python computes composite (sum, 0-21), tier (deterministic boundaries), and convergence flag deterministically.
 
 **Tier boundaries:**
 
 | Composite | Tier | Action |
 |-----------|------|--------|
 | 15-21 | T1 Critical | Full analysis in digest deep dives |
-| 10-14 | T2 High | Substantive coverage with dimension callouts |
+| 10-14 | T2 High | Substantive coverage with domain callouts |
 | 5-9 | T3 Notable | Brief mention, pattern fuel |
 | 1-4 | T4 Peripheral | Title only, skip unless connects to pattern |
 | 0 | T5 Skip | Excluded from digests entirely |
 
-**Convergence:** Articles with 5+ dimensions scoring 2+ are flagged as convergence points (~30% of corpus). These represent stories where multiple analytical lenses intersect on the same event — the structurally densest stories regardless of raw composite score.
+**Convergence:** Articles with 5+ domains scoring 2+ are flagged as convergence points (~30% of corpus). These represent stories where multiple analytical lenses intersect on the same event — the structurally densest stories regardless of raw composite score.
 
 **Processing:** ~2.5 seconds per article. Same model as summarization. Runs as pipeline Stage 5 after embedding.
 
@@ -342,13 +342,13 @@ Narrate the thread:
 #### Daily Digest ✅ Implemented (score-aware)
 - Score-aware narrative briefing in Abend voice
 - Articles grouped by relevance tier with proportional content budgets:
-  - T1 (critical): Full content excerpts + dimension scores + rationale → deep dive analysis
-  - T2 (high): Summary + moderate excerpts + dimension scores → substantive coverage
+  - T1 (critical): Full content excerpts + domain scores + rationale → deep dive analysis
+  - T2 (high): Summary + moderate excerpts + domain scores → substantive coverage
   - T3 (notable): Summary + keywords only → brief mentions, pattern fuel
   - T4 (peripheral): Title + score → mentioned only if connects to a pattern
   - T5 (skip): Excluded entirely
-- Dimensional profile shows which themes dominate the day (with elevation flags)
-- Convergence points explicitly called out for cross-dimensional intersection
+- Domain profile shows which themes dominate the day (with elevation flags)
+- Convergence points explicitly called out for cross-domain intersection
 - Post-processed to ensure hyperlinks and source attribution
 - Review-and-revise loop (up to 3 iterations) validates quotes against source text, checks attribution correctness, removes fabrications
 - Source names normalized to canonical casing during ingestion
@@ -429,7 +429,7 @@ Store enriched article
 | Primary database | SQLite + sqlite-vec | Local, zero config, vector search built in |
 | Local LLM | Ollama | Summarization, embeddings, scoring, chat, digests |
 | Summarization model | llama3.2 (default) | Configurable in settings |
-| Scoring rubric | No One Relevancy Rubric | 7 dimensions, see `no_one_relevancy_rubric.md` |
+| Scoring rubric | No One Relevancy Rubric | 7 domains, see `no_one_relevancy_rubric.md` |
 | Embedding model | nomic-embed-text | 768 dimensions |
 | Scheduling | APScheduler | Hourly pipeline, daily digest |
 | Styling | Pico CSS | Classless, minimal |
@@ -455,10 +455,10 @@ Store enriched article
 - [x] Contextualized summarization (inject related articles into summary prompt)
 
 ### Phase 2.5: Relevance Scoring ✅ Complete
-- [x] 7-dimension relevance scoring via No One Rubric (score.py)
-- [x] Per-dimension scores (D1-D7, 0-3 each) stored as individual columns
+- [x] 7-domain relevance scoring via No One Rubric (score.py)
+- [x] Per-domain scores (D1-D7, 0-3 each) stored as individual columns
 - [x] Composite score (0-21), tier (1-5), convergence flag (5+ dims at 2+)
-- [x] Score-aware daily digests (tiered content budgets, dimensional profile, convergence)
+- [x] Score-aware daily digests (tiered content budgets, domain profile, convergence)
 - [x] Browse filtering by tier and sorting by score
 - [x] Score distribution dashboard (/scores)
 - [x] Score badges on article cards (color-coded by tier)
@@ -497,7 +497,7 @@ Summary of what's built vs. the full vision as of the current codebase:
 | 2: Summarization | Batch summarization + keyword extraction | ✅ |
 | 2: Summarization | Abend-lens system prompt (gap score, fit) | Not yet (uses neutral prompt) |
 | 3: Enrichment | Embeddings (nomic-embed-text, sqlite-vec) | ✅ |
-| 3: Enrichment | 7-dimension relevance scoring (No One Rubric) | ✅ |
+| 3: Enrichment | 7-domain relevance scoring (No One Rubric) | ✅ |
 | 3: Enrichment | Score distribution dashboard | ✅ |
 | 3: Enrichment | Entity extraction (5 categories, LLM-based) | ✅ |
 | 3: Enrichment | Topic classification (17-topic taxonomy, LLM-based) | ✅ |
@@ -520,9 +520,9 @@ Summary of what's built vs. the full vision as of the current codebase:
 - Keyword extraction added as lightweight alternative to full entity extraction
 - Batch pipeline (hourly) rather than real-time per-article processing
 - Relevance scoring as separate pipeline stage (not merged into summarization) — allows re-scoring without re-summarizing
-- LLM provides qualitative dimension scores; Python computes composite/tier/convergence deterministically — avoids LLM arithmetic errors
-- Per-dimension scores stored as individual INTEGER columns (not JSON blob) for SQL filtering/sorting
-- Convergence threshold set to 5+ dimensions at 2+ (~30% selectivity) to maintain signal value
+- LLM provides qualitative domain scores; Python computes composite/tier/convergence deterministically — avoids LLM arithmetic errors
+- Per-domain scores stored as individual INTEGER columns (not JSON blob) for SQL filtering/sorting
+- Convergence threshold set to 5+ domains at 2+ (~30% selectivity) to maintain signal value
 - Score-aware digests use tiered content budgets: context window allocated proportionally to article importance
 - Entity extraction and topic classification as separate LLM calls (not combined) for modularity and independent failure handling
 - Thread detection is purely algorithmic (embedding KNN + entity overlap → connected components), not LLM-based, for speed and determinism

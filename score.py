@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 MAX_CONTENT_LENGTH = 6000
 
-# Dimension keys matching the database column names
-DIMENSION_KEYS = [
+# Domain keys matching the database column names
+DOMAIN_KEYS = [
     "d1_attention_economy",
     "d2_data_sovereignty",
     "d3_power_consolidation",
@@ -27,15 +27,15 @@ DIMENSION_KEYS = [
 ]
 
 # System prompt with condensed rubric for LLM scoring
-SCORING_SYSTEM_PROMPT = """You are a relevance scorer for a news intelligence system. Score each article across 7 dimensions using the No One analytical framework.
+SCORING_SYSTEM_PROMPT = """You are a relevance scorer for a news intelligence system. Score each article across 7 domains using the No One analytical framework.
 
-## Scoring Scale (per dimension)
-- 0: No relevance to this dimension
+## Scoring Scale (per domain)
+- 0: No relevance to this domain
 - 1: Tangential or implicit relevance
-- 2: Moderate relevance — dimension is present but not central
-- 3: High relevance — dimension is a primary theme of the article
+- 2: Moderate relevance — domain is present but not central
+- 3: High relevance — domain is a primary theme of the article
 
-## The 7 Dimensions
+## The 7 Domains
 
 D1 - Attention Economy: How human attention is captured, monetized, manipulated, or defended. Behavioral advertising, algorithmic curation, engagement optimization, addiction by design, screen time, cognitive health.
 
@@ -69,7 +69,7 @@ Respond with ONLY a JSON object, no other text:
   "d5_fear_trust": <0-3>,
   "d6_democratization": <0-3>,
   "d7_systemic_design": <0-3>,
-  "rationale": "<1-2 sentence explanation of the most relevant dimensions and why>"
+  "rationale": "<1-2 sentence explanation of the most relevant domains and why>"
 }"""
 
 
@@ -100,8 +100,8 @@ class ScoreResult:
 
 
 def compute_composite(scores: dict) -> int:
-    """Sum all dimension scores (0-21)."""
-    return sum(scores.get(key, 0) for key in DIMENSION_KEYS)
+    """Sum all domain scores (0-21)."""
+    return sum(scores.get(key, 0) for key in DOMAIN_KEYS)
 
 
 def compute_tier(composite: int) -> int:
@@ -119,14 +119,14 @@ def compute_tier(composite: int) -> int:
 
 
 def compute_convergence(scores: dict) -> bool:
-    """True if 5+ dimensions scored 2 or higher."""
-    high_dims = sum(1 for key in DIMENSION_KEYS if scores.get(key, 0) >= 2)
+    """True if 5+ domains scored 2 or higher."""
+    high_dims = sum(1 for key in DOMAIN_KEYS if scores.get(key, 0) >= 2)
     return high_dims >= 5
 
 
 def parse_score_response(text: str) -> tuple[dict | None, str | None]:
     """
-    Parse the model's JSON response to extract dimension scores and rationale.
+    Parse the model's JSON response to extract domain scores and rationale.
 
     Returns:
         (scores_dict, rationale) or (None, None) on failure
@@ -141,9 +141,9 @@ def parse_score_response(text: str) -> tuple[dict | None, str | None]:
     except json.JSONDecodeError:
         return None, None
 
-    # Validate and extract dimension scores
+    # Validate and extract domain scores
     scores = {}
-    for key in DIMENSION_KEYS:
+    for key in DOMAIN_KEYS:
         value = data.get(key)
         if value is None:
             return None, None
@@ -163,7 +163,7 @@ def parse_score_response(text: str) -> tuple[dict | None, str | None]:
 
 def score_article(title, content, summary, keywords, settings=None) -> ScoreResult:
     """
-    Score a single article across 7 relevance dimensions using Ollama.
+    Score a single article across 7 relevance domains using Ollama.
 
     Returns:
         ScoreResult with success status, scores, composite, tier, and error details

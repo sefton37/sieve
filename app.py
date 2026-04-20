@@ -787,7 +787,7 @@ def scores_page():
         pct = (count / total_scored * 100) if total_scored else 0
         tier_dist.append({**td, "count": count, "pct": pct})
 
-    # Per-dimension averages
+    # Per-domain averages
     dim_labels = {
         "d1_attention_economy": "D1: Attention Economy",
         "d2_data_sovereignty": "D2: Data Sovereignty",
@@ -797,11 +797,11 @@ def scores_page():
         "d6_democratization": "D6: Democratization",
         "d7_systemic_design": "D7: Systemic Design",
     }
-    dimension_avgs = []
+    domain_avgs = []
     for key, label in dim_labels.items():
-        vals = data["dimension_scores"].get(key, [])
+        vals = data["domain_scores"].get(key, [])
         avg = sum(vals) / len(vals) if vals else 0
-        dimension_avgs.append({"key": key, "label": label, "avg": avg})
+        domain_avgs.append({"key": key, "label": label, "avg": avg})
 
     # Convergence
     convergence_count = data["convergence_count"]
@@ -816,8 +816,7 @@ def scores_page():
         composite_mean=composite_mean,
         composite_median=composite_median,
         composite_stddev=composite_stddev,
-        tier_dist=tier_dist,
-        dimension_avgs=dimension_avgs,
+        domain_avgs=domain_avgs,
         convergence_count=convergence_count,
         convergence_pct=convergence_pct,
     )

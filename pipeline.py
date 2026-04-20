@@ -22,7 +22,7 @@ def run_pipeline(on_progress=None):
     2. Compress JSONL (dedupe by URL, keep most recent)
     3. Summarize unsummarized articles + extract keywords (with context)
     4. Embed summarized articles for semantic search
-    5. Score articles for relevance across 7 dimensions
+    5. Score articles for relevance across 7 domains
     6. Extract entities from summarized articles
     7. Classify topics for summarized articles
     8. Detect story threads from entities + embeddings

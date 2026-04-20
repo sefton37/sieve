@@ -523,7 +523,7 @@ def update_relevance_scores(article_id, scores, composite, tier, convergence, ra
     Args:
         article_id: Article ID
         scores: dict with keys D1-D7 (e.g. {"d1_attention_economy": 2, ...})
-        composite: 0-21 sum of all dimensions
+        composite: 0-21 sum of all domains
         tier: 1-5 priority tier
         convergence: 0 or 1
         rationale: 1-2 sentence explanation
@@ -567,7 +567,7 @@ def get_score_distribution():
 
     Returns dict with:
         - composite_scores: list of all composite scores
-        - dimension_scores: dict of dimension_name -> list of scores
+        - domain_scores: dict of domain_name -> list of scores
         - convergence_count: number of articles with convergence flag
         - total: total scored articles
     """
@@ -598,7 +598,7 @@ def get_score_distribution():
 
         return {
             "composite_scores": composites,
-            "dimension_scores": dims,
+            "domain_scores": dims,
             "convergence_count": convergence,
             "total": len(rows),
         }

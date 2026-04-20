@@ -61,19 +61,19 @@
 
 <hr>
 
-<!-- Per-Dimension Averages -->
+<!-- Per-Domain Averages -->
 <section>
-    <h2>Per-Dimension Averages (0-3 scale)</h2>
+    <h2>Per-Domain Averages (0-3 scale)</h2>
     <table>
         <thead>
             <tr>
-                <th>Dimension</th>
+                <th>Domain</th>
                 <th>Average</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
-            {% for dim in dimension_avgs %}
+            {% for dim in domain_avgs %}
             <tr>
                 <td>{{ dim.label }}</td>
                 <td>{{ "%.2f"|format(dim.avg) }}</td>
@@ -93,7 +93,7 @@
     <h2>Convergence</h2>
     <p>
         <strong>{{ convergence_count }}</strong> articles ({{ "%.1f"|format(convergence_pct) }}%) flagged as convergence points
-        (3+ dimensions scored 2 or higher).
+        (3+ domains scored 2 or higher).
     </p>
 </section>
 

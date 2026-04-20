@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 
-DIMENSION_LABELS = {
+DOMAIN_LABELS = {
     "d1_attention_economy": "Attention Economy",
     "d2_data_sovereignty": "Data Sovereignty",
     "d3_power_consolidation": "Power Consolidation",
@@ -31,7 +31,7 @@ DIMENSION_LABELS = {
     "d7_systemic_design": "Systemic Design",
 }
 
-DIMENSION_KEYS = list(DIMENSION_LABELS.keys())
+DOMAIN_KEYS = list(DOMAIN_LABELS.keys())
 
 
 # --- Digest style variation system ---
@@ -215,7 +215,7 @@ def _select_digest_style(seed: int | None = None) -> DigestStyle:
 
 # Score-aware Abend digest system prompt.
 # {tier_summary} = article count per tier
-# {dimension_profile} = today's dimensional averages with elevated flags
+# {domain_profile} = today's domain averages with elevated flags
 # {t1_articles} = Tier 1 articles (full detail)
 # {t2_articles} = Tier 2 articles (detailed)
 # {t3_articles} = Tier 3 articles (brief)
@@ -246,7 +246,7 @@ Write a {depth} analysis of this article for a general audience. Be specific and
 
 **CRITICAL — Plain English only:**
 - Do NOT mention scores, numbers, or ratings (no "17/21", no "scores high on")
-- Do NOT mention dimension names or codes (no "D1", "D3", "Attention Economy (2.3/3)")
+- Do NOT mention domain names or codes (no "D1", "D3", "Attention Economy (2.3/3)")
 - Do NOT use the word "convergence" or "CONVERGENCE"
 - Write as if the reader has never heard of your scoring system
 
@@ -307,7 +307,7 @@ Write EXACTLY THREE sections. Output ONLY these three sections, nothing else:
 
 **CRITICAL — Plain English only:**
 - Do NOT mention scores, numbers, or ratings (no "17/21", no "scores high on")
-- Do NOT mention dimension names or codes (no "D1", "D3", "Attention Economy")
+- Do NOT mention domain names or codes (no "D1", "D3", "Attention Economy")
 - Do NOT use the word "convergence" or "CONVERGENCE" or "tier"
 - Do NOT open with "Today's news/stories/articles reveal(s) a complex..." or any variation
 - {opening_constraint}
@@ -470,13 +470,13 @@ Fix ONLY the issues listed in PRIORITY REVISIONS. Do not rewrite sections that a
 Write the corrected briefing now."""
 
 
-def _format_dimension_scores(article: dict) -> str:
-    """Format an article's dimension scores as a compact string."""
+def _format_domain_scores(article: dict) -> str:
+    """Format an article's domain scores as a compact string."""
     parts = []
-    for key in DIMENSION_KEYS:
+    for key in DOMAIN_KEYS:
         val = article.get(key)
         if val is not None:
-            short = DIMENSION_LABELS[key].split()[0]  # First word as abbreviation
+            short = DOMAIN_LABELS[key].split()[0]  # First word as abbreviation
             parts.append(f"{short}({val})")
     return " ".join(parts)
 
@@ -499,13 +499,13 @@ def _format_t1_article(article: dict) -> str:
         content = content[:max_chars] + "..."
 
     conv_tag = " [CONVERGENCE]" if convergence else ""
-    dims = _format_dimension_scores(article)
+    dims = _format_domain_scores(article)
 
     return (
         f'### "{title}" [{score}/21]{conv_tag}\n'
         f"URL: {url}\n"
         f"Source: {source}\n"
-        f"Dimensions: {dims}\n"
+        f"Domains: {dims}\n"
         f"Scoring rationale: {rationale or 'N/A'}\n"
         f"Keywords: {keywords or 'none'}\n"
         f"Summary: {summary}\n"
@@ -531,13 +531,13 @@ def _format_t2_article(article: dict) -> str:
         content = content[:max_chars] + "..."
 
     conv_tag = " [CONVERGENCE]" if convergence else ""
-    dims = _format_dimension_scores(article)
+    dims = _format_domain_scores(article)
 
     return (
         f'### "{title}" [{score}/21]{conv_tag}\n'
         f"URL: {url}\n"
         f"Source: {source}\n"
-        f"Dimensions: {dims}\n"
+        f"Domains: {dims}\n"
         f"Keywords: {keywords or 'none'}\n"
         f"Summary: {summary}\n"
         f"\n**Article excerpt:**\n{content or 'No content available'}\n"
@@ -570,19 +570,19 @@ def _format_t4_article(article: dict) -> str:
     return f'- "{title}" — {source} — {url}\n'
 
 
-def compute_dimension_profile(articles: list[dict]) -> str:
-    """Compute today's dimensional averages and flag elevated dimensions.
+def compute_domain_profile(articles: list[dict]) -> str:
+    """Compute today's domain averages and flag elevated domains.
 
-    Returns a formatted string showing average per dimension with
-    (elevated) flags for dimensions significantly above their mean.
+    Returns a formatted string showing average per domain with
+    (elevated) flags for domains significantly above their mean.
     """
     if not articles:
         return "No scored articles available."
 
-    # Collect scores per dimension
-    dim_totals = {k: [] for k in DIMENSION_KEYS}
+    # Collect scores per domain
+    dim_totals = {k: [] for k in DOMAIN_KEYS}
     for article in articles:
-        for key in DIMENSION_KEYS:
+        for key in DOMAIN_KEYS:
             val = article.get(key)
             if val is not None:
                 dim_totals[key].append(val)
@@ -595,15 +595,15 @@ def compute_dimension_profile(articles: list[dict]) -> str:
     for key, vals in dim_totals.items():
         dim_avgs[key] = sum(vals) / len(vals) if vals else 0
 
-    # Overall mean across all dimensions to detect elevated ones
+    # Overall mean across all domains to detect elevated ones
     all_avgs = list(dim_avgs.values())
     overall_mean = sum(all_avgs) / len(all_avgs) if all_avgs else 0
 
-    # A dimension is "elevated" if it's 0.5+ above the overall mean
+    # A domain is "elevated" if it's 0.5+ above the overall mean
     parts = []
-    for key in DIMENSION_KEYS:
+    for key in DOMAIN_KEYS:
         avg = dim_avgs[key]
-        label = DIMENSION_LABELS[key]
+        label = DOMAIN_LABELS[key]
         flag = " **(elevated)**" if avg >= overall_mean + 0.5 else ""
         parts.append(f"- {label}: {avg:.1f}/3{flag}")
 

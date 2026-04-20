@@ -4,7 +4,7 @@ A local-first news intelligence tool that ingests RSS articles, summarizes (with
 
 ## Overview
 
-Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries (with related article context), embeddings, 7-dimension relevance scores, entity extractions, and topic classifications via Ollama, detects story threads algorithmically, and serves a web UI for browsing, chatting with the corpus, and reading score-prioritized daily digests.
+Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in SQLite, generates AI summaries (with related article context), embeddings, 7-domain relevance scores, entity extractions, and topic classifications via Ollama, detects story threads algorithmically, and serves a web UI for browsing, chatting with the corpus, and reading score-prioritized daily digests.
 
 ```
 [n8n JSONL export] → [Sieve Pipeline] → [SQLite + sqlite-vec] → [Ollama Summarize + Embed + Score] → [Web UI]
@@ -26,7 +26,7 @@ Sieve takes a JSONL feed of articles (from n8n), deduplicates and stores them in
 │   │   2. Compress  - Deduplicate source JSONL            │               │
 │   │   3. Summarize - Batch summarize via Ollama (+ctx)   │               │
 │   │   4. Embed     - Batch embed via Ollama              │               │
-│   │   5. Score     - 7-dimension relevance scoring       │               │
+│   │   5. Score     - 7-domain relevance scoring          │               │
 │   │   6. Entities  - Named entity extraction             │               │
 │   │   7. Topics    - Topic classification                │               │
 │   │   8. Threads   - Story thread detection              │               │
@@ -87,7 +87,7 @@ CREATE TABLE articles (
     summarized_at TEXT,
     embedding BLOB,              -- 768-dim float vector (struct-packed)
     embedded_at TEXT,
-    -- Relevance scoring (7 dimensions, 0-3 each)
+    -- Relevance scoring (7 domains, 0-3 each)
     d1_attention_economy INTEGER,
     d2_data_sovereignty INTEGER,
     d3_power_consolidation INTEGER,
@@ -95,9 +95,9 @@ CREATE TABLE articles (
     d5_fear_trust INTEGER,
     d6_democratization INTEGER,
     d7_systemic_design INTEGER,
-    composite_score INTEGER,     -- 0-21 sum of all dimensions
+    composite_score INTEGER,     -- 0-21 sum of all domains
     relevance_tier INTEGER,      -- 1-5 priority tier
-    convergence_flag INTEGER,    -- 1 if 5+ dimensions scored 2+
+    convergence_flag INTEGER,    -- 1 if 5+ domains scored 2+
     relevance_rationale TEXT,    -- LLM explanation of scoring
     scored_at TEXT,
     -- Phase 3: Structure
@@ -182,7 +182,7 @@ Sieve/
 ├── ingest.py           # JSONL parsing and URL deduplication
 ├── summarize.py        # Ollama summarization with keyword extraction
 ├── embed.py            # Ollama embedding (nomic-embed-text, 768-dim)
-├── score.py            # 7-dimension relevance scoring via Ollama
+├── score.py            # 7-domain relevance scoring via Ollama
 ├── entities.py         # Named entity extraction via Ollama (5 categories)
 ├── topics.py           # Topic classification via Ollama (17-topic taxonomy)
 ├── threads.py          # Algorithmic story thread detection (embedding + entity overlap)
@@ -190,7 +190,7 @@ Sieve/
 ├── scheduler.py        # APScheduler: hourly pipeline, daily digest
 ├── chat.py             # RAG chat: embed query → vector search → generate
 ├── digest.py           # Score-aware daily digest generation in Abend voice
-├── no_one_relevancy_rubric.md  # Scoring rubric (7 dimensions, tiers, convergence)
+├── no_one_relevancy_rubric.md  # Scoring rubric (7 domains, tiers, convergence)
 ├── sieve.service       # SystemD service file for deployment
 ├── templates/
 │   ├── base.html       # Layout with nav (Browse, Chat, Digest, Scores, Settings)
@@ -226,7 +226,7 @@ Sieve/
 ### 2. Article (`/article/<id>`)
 - Full article content
 - Summary with keywords (or "not yet summarized")
-- Relevance scoring: composite score, tier badge, convergence flag, per-dimension scores, rationale (if scored)
+- Relevance scoring: composite score, tier badge, convergence flag, per-domain scores, rationale (if scored)
 - Topics: classified topic tags
 - Entities: categorized entity tags (companies, people, products, legislation, other)
 - Story threads: linked thread names with article counts
@@ -243,8 +243,8 @@ Sieve/
 ### 4. Digest (`/digest`)
 - Score-aware AI-generated daily briefings in Abend voice
 - Articles grouped by tier with proportional depth: T1 gets deep dives, T2 gets substantive coverage, T3 feeds pattern sections, T4 mentioned in passing, T5 excluded
-- Dimensional profile shows which analytical themes dominate the day
-- Convergence points highlighted for cross-dimensional intersection stories
+- Domain profile shows which analytical themes dominate the day
+- Convergence points highlighted for cross-domain intersection stories
 - Generate on demand or via scheduled job (default: 20:00 UTC)
 - Review-and-revise loop validates quotes and attribution, auto-corrects up to 3 times
 - Backfills missing days and regenerates stale digests automatically
@@ -255,7 +255,7 @@ Sieve/
 - Composite score histogram (0-21 distribution)
 - Statistics: mean, median, standard deviation
 - Tier distribution table with colored bars and percentages
-- Per-dimension averages (0-3 scale) showing which dimensions the corpus scores highest on
+- Per-domain averages (0-3 scale) showing which domains the corpus scores highest on
 - Convergence count and percentage
 
 ### 6. Settings (`/settings`)
@@ -312,10 +312,10 @@ Embeds user query → KNN search for top-5 similar articles → formats articles
 
 ### Relevance Scoring (`/api/generate`)
 
-Scores each article across 7 analytical dimensions (0-3 each) based on the No One Relevancy Rubric (`no_one_relevancy_rubric.md`):
+Scores each article across 7 analytical domains (0-3 each) based on the No One Relevancy Rubric (`no_one_relevancy_rubric.md`):
 - **D1** Attention Economy, **D2** Data Sovereignty, **D3** Power Consolidation, **D4** Coercion vs Cooperation, **D5** Fear vs Trust, **D6** Democratization, **D7** Systemic Design
 
-LLM provides the 7 dimension scores + a rationale. Python computes composite (0-21), tier (1-5), and convergence flag deterministically. Convergence: 5+ dimensions scoring 2+ (marks ~30% of articles). Uses the same model as summarization. ~2.5 seconds per article.
+LLM provides the 7 domain scores + a rationale. Python computes composite (0-21), tier (1-5), and convergence flag deterministically. Convergence: 5+ domains scoring 2+ (marks ~30% of articles). Uses the same model as summarization. ~2.5 seconds per article.
 
 **Tier boundaries:**
 
@@ -341,7 +341,7 @@ Detects story threads by combining embedding similarity (KNN top-5) with entity 
 
 ### Digest (`/api/generate` with scored article batch)
 
-Retrieves last 24 hours of scored articles → groups by tier with proportional content budgets (T1: 3000 chars + rationale, T2: 1500 chars, T3: summary only, T4: title only, T5: excluded) → computes dimensional profile with elevation flags → generates 1500-2500 word narrative digest in Abend voice where analysis depth scales with article tier → post-processes to ensure hyperlinks and source attribution. Uses streaming (`stream: true`) with extended timeouts (30s connect, 600s between chunks), dynamic context window sizing (minimum 32768, rounded up to fit prompt), and a 4096-token response cap.
+Retrieves last 24 hours of scored articles → groups by tier with proportional content budgets (T1: 3000 chars + rationale, T2: 1500 chars, T3: summary only, T4: title only, T5: excluded) → computes domain profile with elevation flags → generates 1500-2500 word narrative digest in Abend voice where analysis depth scales with article tier → post-processes to ensure hyperlinks and source attribution. Uses streaming (`stream: true`) with extended timeouts (30s connect, 600s between chunks), dynamic context window sizing (minimum 32768, rounded up to fit prompt), and a 4096-token response cap.
 
 ## Setup
 
@@ -377,14 +377,14 @@ sudo systemctl enable --now sieve
    - Compresses JSONL file (deduplicates source file)
    - Batch summarizes unsummarized articles via Ollama (with keyword extraction and related article context)
    - Batch embeds unembedded articles via Ollama
-   - Batch scores articles across 7 relevance dimensions via Ollama
+   - Batch scores articles across 7 relevance domains via Ollama
    - Extracts named entities from summarized articles
    - Classifies articles into topics from fixed taxonomy
    - Detects and links story threads from entity overlap + embedding similarity
 3. **You browse** → filter articles by tier/score, sort by relevance, read summaries
 4. **You chat** → ask questions, get RAG-powered answers grounded in your articles
 5. **Daily digest** → generated at 20:00 UTC (configurable), 1 hour after last scoring batch. Score-aware narrative briefing in Abend voice with tiered depth. Automatically backfills missing days and regenerates stale digests
-6. **You review scores** → check distribution dashboard, see which dimensions dominate
+6. **You review scores** → check distribution dashboard, see which domains dominate
 
 ## Scheduling
 
